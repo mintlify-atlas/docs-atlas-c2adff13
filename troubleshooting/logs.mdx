@@ -41,6 +41,36 @@ UMCP supports four log levels:
 
 Logs are filtered by level weight. For example, if the log level is set to `info`, `debug` messages are suppressed.
 
+### Setting Log Level
+
+You can control the log level using the `UMCP_LOG_LEVEL` environment variable:
+
+<CodeGroup>
+
+```bash Set to debug
+export UMCP_LOG_LEVEL=debug
+umcp serve
+```
+
+```bash Set to warn
+export UMCP_LOG_LEVEL=warn
+umcp serve
+```
+
+```bash Inline (one-time)
+UMCP_LOG_LEVEL=debug umcp serve
+```
+
+</CodeGroup>
+
+**Valid values:** `debug`, `info`, `warn`, `error`
+
+**Default:** `info`
+
+<Note>
+  Setting the log level to `debug` will show detailed diagnostic information, including internal state changes and detailed provider communication.
+</Note>
+
 ## Log Events
 
 UMCP emits the following event types:
