@@ -1,0 +1,161 @@
+---
+title: CLI Overview
+description: Command-line interface for UMCP
+---
+
+UMCP provides a command-line interface for running, validating, and testing your MCP aggregation configuration.
+
+## Quick Start
+
+```bash
+# Start umcp with default stdio transport
+umcp serve
+
+# Start umcp with HTTP transport
+umcp serve --transport http --port 8787
+
+# Validate your configuration
+umcp validate
+
+# Preview tool discovery without starting the server
+umcp dry-run
+```
+
+## Available Commands
+
+<CardGroup cols={3}>
+  <Card title="serve" icon="server" href="/cli/serve">
+    Start the UMCP aggregation server
+  </Card>
+  <Card title="validate" icon="check" href="/cli/validate">
+    Validate your configuration file
+  </Card>
+  <Card title="dry-run" icon="list" href="/cli/dry-run">
+    Preview tool discovery without starting
+  </Card>
+</CardGroup>
+
+## Global Flags
+
+<ParamField path="--config" type="string" default="~/.config/umcp/umcp.jsonc">
+  Path to the UMCP configuration file. Supports only `.jsonc` format.
+  
+  ```bash
+  umcp serve --config /path/to/custom.jsonc
+  ```
+</ParamField>
+
+<ParamField path="--help" type="boolean">
+  Display help information and exit.
+  
+  ```bash
+  umcp --help
+  ```
+</ParamField>
+
+<ParamField path="-h" type="boolean">
+  Short form of `--help`.
+</ParamField>
+
+## Help Text
+
+Running `umcp --help` displays:
+
+```
+umcp - Unified MCP Aggregator
+
+Usage:
+  umcp serve [--transport stdio|http] [--host 127.0.0.1] [--port 8787] [--path /mcp] [--config /path/to/umcp.jsonc]
+  umcp validate [--config /path/to/umcp.jsonc]
+  umcp dry-run [--config /path/to/umcp.jsonc]
+
+Compatibility flags:
+  umcp --validate [--config /path/to/umcp.jsonc]
+  umcp --dry-run [--config /path/to/umcp.jsonc]
+```
+
+## Compatibility Flags
+
+For backward compatibility, UMCP supports legacy flag syntax:
+
+```bash
+# Legacy syntax (still supported)
+umcp --validate
+umcp --dry-run
+
+# Modern syntax (recommended)
+umcp validate
+umcp dry-run
+```
+
+Both forms are functionally identical.
+
+## Default Behavior
+
+When no command is specified, UMCP defaults to `serve`:
+
+```bash
+# These are equivalent
+umcp
+umcp serve
+```
+
+## Error Handling
+
+### Unknown Command
+
+If you provide an invalid command:
+
+```bash
+umcp invalid-command
+```
+
+```
+Error: Unknown command 'invalid-command'. Use --help for usage.
+```
+
+### Invalid Flag Values
+
+UMCP validates flag values and provides clear error messages:
+
+```bash
+umcp serve --transport invalid
+```
+
+```
+Error: Invalid --transport value 'invalid'. Expected 'stdio' or 'http'.
+```
+
+```bash
+umcp serve --port abc
+```
+
+```
+Error: Invalid value for --port: abc
+```
+
+## Flag Parsing
+
+UMCP supports multiple flag formats:
+
+```bash
+# Space-separated
+umcp serve --transport http
+
+# Equals sign
+umcp serve --transport=http
+
+# Boolean flags (presence = true)
+umcp --validate
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Serve Command" icon="server" href="/cli/serve">
+    Learn about all serve command options
+  </Card>
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Configure your MCP providers
+  </Card>
+</CardGroup>

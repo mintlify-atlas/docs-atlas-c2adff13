@@ -1,0 +1,362 @@
+---
+title: Common Issues
+description: Solutions to frequently encountered problems in UMCP
+---
+
+## Overview
+
+This page covers common issues you may encounter when using UMCP and their solutions.
+
+<Accordion title="npm cache EACCES error">
+
+### Problem
+
+When using upstream stdio providers with `npm` or `npx`, you may encounter permission errors like:
+
+```
+EACCES: permission denied, mkdir '~/.npm/_cacache'
+```
+
+This typically happens when your npm cache directory has ownership issues.
+
+### Automatic Solution
+
+UMCP automatically detects and handles npm cache permission issues:
+
+- When an upstream stdio provider uses `npm` or `npx` commands
+- If no npm cache is configured OR the configured cache is not writable
+- UMCP automatically applies a fallback cache directory at `~/.cache/umcp/npm`
+
+No manual intervention is required in most cases.
+
+### Manual Override
+
+You can explicitly set the npm cache directory in your provider configuration:
+
+```jsonc
+{
+  "categories": {
+    "web_search": {
+      "providers": [
+        {
+          "name": "brave",
+          "transport": "stdio",
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+          "env": {
+            "BRAVE_API_KEY": "your-key",
+            "NPM_CONFIG_CACHE": "/Users/yan/.cache/umcp/npm"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+</Accordion>
+
+<Accordion title="Tool name collision error">
+
+### Problem
+
+You see an error like:
+
+```
+Final tool name collision: 'web_search.brave.search' from 'web_search.brave' and 'web_search.brave_alt'
+```
+
+### Cause
+
+Two different providers are exposing tools that result in the same final three-segment name:
+- `{category}.{provider}.{tool}`
+
+This happens when:
+1. Multiple providers in the same category use the same provider name
+2. Providers expose tools with the same name or alias
+
+### Solution
+
+**Option 1: Change provider names**
+
+Ensure each provider has a unique name within its category:
+
+```jsonc
+{
+  "categories": {
+    "web_search": {
+      "providers": [
+        {
+          "name": "brave_primary",  // Changed from "brave"
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-brave-search"]
+        },
+        {
+          "name": "brave_secondary",  // Changed from "brave"
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-brave-search"]
+        }
+      ]
+    }
+  }
+}
+```
+
+**Option 2: Use different aliases**
+
+Use the `tools` array to assign unique aliases:
+
+```jsonc
+{
+  "tools": [
+    {
+      "upstream": "search",
+      "alias": "search_v1"  // Unique alias
+    }
+  ]
+}
+```
+
+</Accordion>
+
+<Accordion title="Invalid tool name characters">
+
+### Problem
+
+You see an error like:
+
+```
+Discovered tool 'search.web' on 'web_search.provider' cannot be used as a namespace segment.
+Add an explicit tools mapping with a valid alias ([a-zA-Z0-9_-]+).
+```
+
+### Cause
+
+UMCP enforces naming rules to ensure canonical three-segment names:
+- Category names must match `[a-zA-Z0-9_-]+`
+- Provider names must match `[a-zA-Z0-9_-]+`
+- Tool names/aliases must match `[a-zA-Z0-9_-]+`
+
+If an auto-discovered upstream tool contains unsupported characters (like `.`, spaces, or special characters), UMCP cannot use it directly.
+
+### Solution
+
+Add an explicit `tools` mapping with a valid alias:
+
+```jsonc
+{
+  "name": "provider",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "some-mcp-server"],
+  "tools": [
+    {
+      "upstream": "search.web",  // Original name with dot
+      "alias": "search_web",      // Valid alias
+      "enabled": true
+    }
+  ]
+}
+```
+
+Valid characters for aliases:
+- Letters: `a-z`, `A-Z`
+- Numbers: `0-9`
+- Underscore: `_`
+- Hyphen: `-`
+
+</Accordion>
+
+<Accordion title="Config validation errors">
+
+### Problem
+
+You see errors when running `umcp validate` or `umcp serve`:
+
+```
+Config validation failed: categories.web_search.providers[0].command: provider.command is required when transport is stdio
+```
+
+### Common Validation Errors
+
+**Missing command for stdio transport**
+
+```
+provider.command is required when transport is stdio
+```
+
+Solution: Add a `command` field:
+
+```jsonc
+{
+  "transport": "stdio",
+  "command": "npx",  // Required
+  "args": ["-y", "server-name"]
+}
+```
+
+**Missing URL for HTTP transports**
+
+```
+provider.url is required when transport is sse or streamable-http
+```
+
+Solution: Add a `url` field:
+
+```jsonc
+{
+  "transport": "streamable-http",
+  "url": "https://your-server.example.com/mcp"  // Required
+}
+```
+
+**Duplicate provider names**
+
+```
+duplicate provider name 'brave' within one category
+```
+
+Solution: Each provider name must be unique within its category:
+
+```jsonc
+{
+  "providers": [
+    { "name": "brave_primary" },
+    { "name": "brave_secondary" }  // Must be different
+  ]
+}
+```
+
+**Empty categories**
+
+```
+categories must include at least one category
+```
+
+Solution: Your config must have at least one category with at least one provider.
+
+**Invalid category/provider names**
+
+```
+category name must match [a-zA-Z0-9_-]+ (no dots/spaces; used as namespace segment)
+```
+
+Solution: Use only alphanumeric characters, underscores, and hyphens:
+
+```jsonc
+{
+  "categories": {
+    "web_search": { },      // Valid
+    "web.search": { }       // Invalid (contains dot)
+  }
+}
+```
+
+</Accordion>
+
+<Accordion title="Config file not found or invalid JSONC">
+
+### Problem
+
+You see errors about missing or invalid config files:
+
+```
+Only JSONC config files are supported. Use a .jsonc file path.
+```
+
+or
+
+```
+Invalid JSONC in ~/.config/umcp/umcp.jsonc: PropertyNameExpected at line 15, column 3
+```
+
+### Solution
+
+**Config file location**
+
+UMCP uses JSONC format and looks for config at:
+- Default: `~/.config/umcp/umcp.jsonc`
+- Custom: Use `--config` flag
+
+On first run, UMCP auto-creates the default config file with detailed placeholders.
+
+**JSONC syntax errors**
+
+JSONC (JSON with Comments) supports:
+- Comments: `//` and `/* */`
+- Trailing commas
+
+Common syntax errors:
+- Missing commas between properties
+- Unclosed quotes or brackets
+- Invalid property names
+
+Use a JSON/JSONC validator or editor with schema support to catch syntax errors:
+
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/grittyninja/umcp/main/umcp.config.schema.json",
+  "categories": {
+    // Your config
+  }
+}
+```
+
+</Accordion>
+
+<Accordion title="Provider connection failures">
+
+### Problem
+
+Providers fail to connect or tools fail to discover:
+
+```
+Failed to list tools for 'web_search.brave': Connection refused
+```
+
+or
+
+```
+Tool call failed for 'web_search.brave.search': Provider not responding
+```
+
+### Troubleshooting Steps
+
+1. **Test the provider directly**
+   ```bash
+   npx -y @modelcontextprotocol/server-brave-search
+   ```
+
+2. **Check environment variables**
+   - Ensure API keys are set correctly
+   - Check for typos in env var names
+   - Verify values are not masked/redacted
+
+3. **Verify transport settings**
+   - stdio: Requires `command` and optionally `args`
+   - sse/streamable-http: Requires valid `url`
+
+4. **Check server logs**
+   
+   UMCP logs to stderr in JSON format. Look for:
+   - `provider.connected` events
+   - `provider.disconnected` events
+   - Error messages with details
+
+5. **Use dry-run mode**
+   ```bash
+   umcp dry-run
+   ```
+   
+   This connects to all providers and lists discovered tools without starting the server.
+
+</Accordion>
+
+## Getting Help
+
+If you encounter an issue not covered here:
+
+1. Check the [structured logs](/troubleshooting/logs) for detailed error information
+2. Run `umcp validate` to check your configuration
+3. Run `umcp dry-run` to test provider connections
+4. Review your config against the [JSON schema](https://raw.githubusercontent.com/grittyninja/umcp/main/umcp.config.schema.json)

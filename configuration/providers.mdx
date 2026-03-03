@@ -1,0 +1,355 @@
+---
+title: Providers
+description: Configure MCP server connections and transport methods
+---
+
+Providers represent MCP server connections in UMCP. Each provider defines how to connect to an MCP server, what transport method to use, and which tools to expose.
+
+## Provider Configuration
+
+Providers are defined in the `providers` array within each category:
+
+```jsonc
+{
+  "categories": {
+    "web_search": {
+      "providers": [
+        {
+          "name": "brave",
+          "transport": "stdio",
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+          "env": {
+            "BRAVE_API_KEY": "your-api-key"
+          },
+          "tools": [
+            { "upstream": "search", "alias": "search" }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+## Schema Reference
+
+<ParamField path="name" type="string" required>
+  Provider name used as the second namespace segment: `{category}.{provider}.{tool}`
+  
+  **Pattern:** `[a-zA-Z0-9_-]+`
+  
+  Must be unique within the category. Can be reused across different categories.
+  
+  **Examples:**
+  - ✅ `brave`
+  - ✅ `server-1`
+  - ✅ `api_v2`
+  - ❌ `my.provider` (contains dot)
+  - ❌ `my provider` (contains space)
+</ParamField>
+
+<ParamField path="transport" type="enum" default="stdio">
+  Transport method for connecting to the MCP server
+  
+  **Options:**
+  - `stdio` - Standard input/output (most common)
+  - `sse` - Server-Sent Events
+  - `streamable-http` - HTTP streaming
+  
+  **Default:** `stdio`
+</ParamField>
+
+<ParamField path="command" type="string">
+  Command to execute for `stdio` transport
+  
+  **Required when:** `transport` is `stdio` (or omitted)
+  
+  **Examples:**
+  - `"npx"`
+  - `"node"`
+  - `"/usr/local/bin/mcp-server"`
+  - `"python"`
+</ParamField>
+
+<ParamField path="args" type="array" optional>
+  Array of command-line arguments for the command
+  
+  **Example:**
+  ```json
+  ["--yes", "@modelcontextprotocol/server-brave-search"]
+  ```
+</ParamField>
+
+<ParamField path="url" type="string">
+  URL for `sse` or `streamable-http` transport
+  
+  **Required when:** `transport` is `sse` or `streamable-http`
+  
+  **Must be:** A valid URL
+  
+  **Example:**
+  ```json
+  "https://linear-mcp.example.com/mcp"
+  ```
+</ParamField>
+
+<ParamField path="env" type="object" optional>
+  Environment variables to pass to the provider
+  
+  See [Environment Variables](/configuration/environment-variables) for details.
+</ParamField>
+
+<ParamField path="tools" type="array" optional>
+  Array of tool mappings controlling which tools are exposed
+  
+  **If omitted:** UMCP auto-discovers all tools from the provider
+  
+  **If provided:** Only explicitly mapped tools are exposed
+  
+  See [Tool Configuration](/configuration/tools) for details.
+</ParamField>
+
+## Transport Methods
+
+### stdio (Standard Input/Output)
+
+The most common transport method. UMCP spawns a child process and communicates via stdin/stdout.
+
+```jsonc
+{
+  "name": "brave",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+  "env": {
+    "BRAVE_API_KEY": "your-api-key"
+  }
+}
+```
+
+<Note>
+The `transport` field defaults to `"stdio"` if omitted, so you can omit it for stdio providers.
+</Note>
+
+**Requirements:**
+- `command` is required
+- `args` is optional
+- `url` should not be specified
+
+### sse (Server-Sent Events)
+
+Connect to a remote MCP server using Server-Sent Events:
+
+```jsonc
+{
+  "name": "remote_api",
+  "transport": "sse",
+  "url": "https://api.example.com/mcp/sse"
+}
+```
+
+**Requirements:**
+- `url` is required
+- `command` and `args` should not be specified
+
+### streamable-http (HTTP Streaming)
+
+Connect to a remote MCP server using HTTP streaming:
+
+```jsonc
+{
+  "name": "linear",
+  "transport": "streamable-http",
+  "url": "https://linear-mcp.example.com/mcp"
+}
+```
+
+**Requirements:**
+- `url` is required
+- `command` and `args` should not be specified
+
+## Provider Naming Rules
+
+Provider names must follow the same constraints as category names:
+
+**Pattern:** `[a-zA-Z0-9_-]+`
+
+**Allowed:**
+- Lowercase letters: `a-z`
+- Uppercase letters: `A-Z`
+- Numbers: `0-9`
+- Underscore: `_`
+- Hyphen: `-`
+
+**Not allowed:**
+- Dots (`.`)
+- Spaces
+- Special characters
+
+<Warning>
+Provider names must be unique within each category, but can be reused across different categories.
+</Warning>
+
+## Examples
+
+### NPM Package via npx
+
+```jsonc
+{
+  "name": "brave",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+  "env": {
+    "BRAVE_API_KEY": "your-api-key"
+  }
+}
+```
+
+### Node.js Script
+
+```jsonc
+{
+  "name": "custom_server",
+  "transport": "stdio",
+  "command": "node",
+  "args": ["/path/to/server.js"],
+  "env": {
+    "API_KEY": "your-api-key"
+  }
+}
+```
+
+### Python Script
+
+```jsonc
+{
+  "name": "python_server",
+  "transport": "stdio",
+  "command": "python",
+  "args": ["/path/to/server.py"],
+  "env": {
+    "PYTHONUNBUFFERED": "1"
+  }
+}
+```
+
+### Remote HTTP Server
+
+```jsonc
+{
+  "name": "linear",
+  "transport": "streamable-http",
+  "url": "https://linear-mcp.example.com/mcp",
+  "tools": [
+    {
+      "upstream": "create_issue",
+      "alias": "add_task"
+    }
+  ]
+}
+```
+
+### Multiple Providers in One Category
+
+```jsonc
+{
+  "categories": {
+    "web_search": {
+      "providers": [
+        {
+          "name": "brave",
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+          "env": { "BRAVE_API_KEY": "key1" }
+        },
+        {
+          "name": "tavily",
+          "command": "npx",
+          "args": ["-y", "tavily-mcp"],
+          "env": { "TAVILY_API_KEY": "key2" }
+        }
+      ]
+    }
+  }
+}
+```
+
+## Auto-Discovery
+
+If you omit the `tools` field, UMCP automatically discovers all tools from the provider:
+
+```jsonc
+{
+  "name": "tavily",
+  "command": "npx",
+  "args": ["-y", "tavily-mcp"],
+  "env": {
+    "TAVILY_API_KEY": "your-api-key"
+  }
+  // tools omitted -> auto-discover all tools
+}
+```
+
+<Tip>
+Use auto-discovery during development to explore what tools a provider offers. Switch to explicit tool mappings in production for better control.
+</Tip>
+
+## Validation Rules
+
+UMCP enforces these validation rules for providers:
+
+1. **Name required:** Every provider must have a name
+2. **Valid naming:** Provider names must match `[a-zA-Z0-9_-]+`
+3. **Unique names:** Provider names must be unique within each category
+4. **Transport requirements:**
+   - `stdio` requires `command`
+   - `sse` requires `url`
+   - `streamable-http` requires `url`
+5. **Strict mode:** Unknown fields will cause validation errors
+
+## Error Messages
+
+### Missing command for stdio
+
+```
+Config validation failed: provider.command is required when transport is stdio
+```
+
+**Solution:** Add a `command` field to your provider configuration.
+
+### Missing URL for HTTP transports
+
+```
+Config validation failed: provider.url is required when transport is sse or streamable-http
+```
+
+**Solution:** Add a `url` field to your provider configuration.
+
+### Invalid provider name
+
+```
+Config validation failed: provider.name must match [a-zA-Z0-9_-]+
+```
+
+**Solution:** Rename the provider to use only allowed characters.
+
+### Duplicate provider name
+
+```
+Config validation failed: duplicate provider name 'brave' within one category
+```
+
+**Solution:** Choose a unique name for each provider within the category.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configure Tools" icon="wrench" href="/configuration/tools">
+    Control which tools are exposed from providers
+  </Card>
+  <Card title="Environment Variables" icon="key" href="/configuration/environment-variables">
+    Configure secrets and API keys
+  </Card>
+</CardGroup>

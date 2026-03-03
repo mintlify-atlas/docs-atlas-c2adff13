@@ -1,0 +1,266 @@
+---
+title: Namespacing
+description: Learn how UMCP uses a three-segment naming system to avoid tool name collisions
+---
+
+## Overview
+
+UMCP uses a **three-segment naming system** to expose unified tools from multiple providers without naming conflicts. Every tool exposed by UMCP follows the pattern:
+
+```
+{category}.{provider}.{tool}
+```
+
+This namespacing strategy ensures that tools from different providers never collide, even when they have identical upstream names.
+
+## Naming Structure
+
+### Segment Requirements
+
+Each segment in the three-part name must match the pattern `[a-zA-Z0-9_-]+`:
+
+- **Allowed**: Letters (a-z, A-Z), numbers (0-9), underscores (`_`), and hyphens (`-`)
+- **Not allowed**: Dots (`.`), spaces, or special characters
+
+From `config.ts:9`:
+```typescript
+export const NAMESPACE_SEGMENT_REGEX = /^[a-zA-Z0-9_-]+$/;
+```
+
+### Example Names
+
+```
+web_search.brave.search
+web_search.tavily.search
+project_mgmt.linear.add_task
+project_mgmt.github.create_issue
+```
+
+Notice how both `brave` and `tavily` can expose a `search` tool without conflict because they're in different provider namespaces.
+
+## Configuration Validation
+
+### Category Names
+
+Category names are validated as namespace segments. From `config.ts:90-100`:
+```typescript
+.superRefine((value, ctx) => {
+  for (const categoryName of Object.keys(value.categories)) {
+    if (!NAMESPACE_SEGMENT_REGEX.test(categoryName)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["categories", categoryName],
+        message:
+          "category name must match [a-zA-Z0-9_-]+ (no dots/spaces; used as namespace segment)"
+      });
+    }
+  }
+})
+```
+
+### Provider Names
+
+Provider names must also follow the namespace segment rules. From `config.ts:30-36`:
+```typescript
+name: z
+  .string()
+  .min(1, "provider.name is required")
+  .regex(
+    NAMESPACE_SEGMENT_REGEX,
+    "provider.name must match [a-zA-Z0-9_-]+ (no dots/spaces; used as namespace segment)"
+  ),
+```
+
+### Tool Aliases
+
+When you create tool mappings with aliases, those aliases must also be valid namespace segments. From `config.ts:16-23`:
+```typescript
+alias: z
+  .string()
+  .min(1)
+  .regex(
+    NAMESPACE_SEGMENT_REGEX,
+    "tools[].alias must match [a-zA-Z0-9_-]+ (no dots/spaces; used as namespace segment)"
+  )
+  .optional(),
+```
+
+## Tool Discovery and Naming
+
+UMCP discovers tools from upstream providers and applies namespacing automatically.
+
+### Auto-Discovery Mode
+
+When no `tools` array is specified in a provider configuration, UMCP auto-discovers all tools. From `toolRegistry.ts:79-96`:
+```typescript
+function toDiscoveredMappings(providerRef: ProviderRef, discoveredTools: UpstreamTool[]): UnifiedToolBinding[] {
+  return discoveredTools.map((tool) => ({
+    ...((() => {
+      const segment = ensureToolSegment(tool.name, {
+        providerId: providerRef.providerId,
+        source: "discovered"
+      });
+      return { finalName: `${providerRef.category}.${providerRef.provider.name}.${segment}` };
+    })()),
+    providerId: providerRef.providerId,
+    category: providerRef.category,
+    providerName: providerRef.provider.name,
+    upstreamName: tool.name,
+    description: tool.description,
+    title: tool.title,
+    inputSchema: tool.inputSchema
+  }));
+}
+```
+
+If a discovered tool name doesn't match the namespace segment regex, UMCP throws an error:
+```
+Discovered tool 'invalid.tool' on 'brave' cannot be used as a namespace segment.
+Add an explicit tools mapping with a valid alias ([a-zA-Z0-9_-]+).
+```
+
+### Explicit Mapping Mode
+
+When you provide a `tools` array, you can control which tools are exposed and use aliases. From `toolRegistry.ts:41-77`:
+```typescript
+function toConfiguredMappings(
+  providerRef: ProviderRef,
+  discoveredTools: UpstreamTool[],
+  mappings: ToolMappingConfig[]
+): UnifiedToolBinding[] {
+  const discoveredByName = new Map(discoveredTools.map((tool) => [tool.name, tool]));
+  const bindings: UnifiedToolBinding[] = [];
+
+  for (const mapping of mappings) {
+    if (mapping.enabled === false) {
+      continue;
+    }
+
+    const discovered = discoveredByName.get(mapping.upstream);
+    if (!discovered) {
+      throw new Error(
+        `Configured tool '${mapping.upstream}' was not discovered on provider '${providerRef.providerId}'`
+      );
+    }
+
+    const toolSegment = mapping.alias
+      ? ensureToolSegment(mapping.alias, { providerId: providerRef.providerId, source: "alias" })
+      : ensureToolSegment(mapping.upstream, { providerId: providerRef.providerId, source: "upstream" });
+    bindings.push({
+      providerId: providerRef.providerId,
+      category: providerRef.category,
+      providerName: providerRef.provider.name,
+      upstreamName: discovered.name,
+      finalName: `${providerRef.category}.${providerRef.provider.name}.${toolSegment}`,
+      description: discovered.description,
+      title: discovered.title,
+      inputSchema: discovered.inputSchema
+    });
+  }
+
+  return bindings;
+}
+```
+
+## Collision Detection
+
+UMCP enforces unique tool names across all providers. From `toolRegistry.ts:118-128`:
+```typescript
+for (const binding of bindings) {
+  const collision = seenFinalNames.get(binding.finalName);
+  if (collision) {
+    throw new Error(
+      `Final tool name collision: '${binding.finalName}' from '${binding.providerId}' and '${collision.providerId}'`
+    );
+  }
+  seenFinalNames.set(binding.finalName, binding);
+  allBindings.push(binding);
+}
+```
+
+### How Collisions Occur
+
+A collision happens when two providers generate the same final tool name. This can occur if:
+
+1. Two providers in the same category have the same `name`
+2. Two tools in different providers have identical category, provider name, and tool segment combinations
+
+### Error Message
+
+When a collision is detected:
+```
+Final tool name collision: 'web_search.brave.search' from 'web_search/brave/0' and 'web_search/brave/1'
+```
+
+## Segment Validation Errors
+
+The `ensureToolSegment` function validates all namespace segments. From `toolRegistry.ts:21-39`:
+```typescript
+function ensureToolSegment(
+  value: string,
+  context: { providerId: string; source: "alias" | "upstream" | "discovered" }
+): string {
+  if (!NAMESPACE_SEGMENT_REGEX.test(value)) {
+    if (context.source === "discovered") {
+      throw new Error(
+        `Discovered tool '${value}' on '${context.providerId}' cannot be used as a namespace segment. ` +
+          "Add an explicit tools mapping with a valid alias ([a-zA-Z0-9_-]+)."
+      );
+    }
+
+    throw new Error(
+      `Invalid ${context.source} '${value}' on '${context.providerId}'. ` +
+        "Namespace segment values must match [a-zA-Z0-9_-]+."
+    );
+  }
+  return value;
+}
+```
+
+### Invalid Segment Examples
+
+- `my.tool` - Contains a dot
+- `my tool` - Contains a space
+- `my@tool` - Contains a special character
+- `` - Empty string
+
+## Best Practices
+
+1. **Use descriptive categories**: Group related providers together (e.g., `web_search`, `project_mgmt`, `data_analysis`)
+2. **Keep provider names simple**: Use the service name (e.g., `brave`, `linear`, `github`)
+3. **Use aliases for clarity**: If an upstream tool name is unclear or invalid, provide a better alias
+4. **Avoid collisions**: Ensure each provider in a category has a unique name
+
+## Example Configuration
+
+```jsonc
+{
+  "categories": {
+    "web_search": {
+      "providers": [
+        {
+          "name": "brave",
+          "transport": "stdio",
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+          "tools": [
+            {
+              "upstream": "brave_web_search",
+              "alias": "search",  // Creates: web_search.brave.search
+              "enabled": true
+            }
+          ]
+        },
+        {
+          "name": "tavily",
+          "transport": "stdio",
+          "command": "npx",
+          "args": ["-y", "tavily-mcp"]
+          // No tools array = auto-discover
+          // Creates: web_search.tavily.{discovered_tool_name}
+        }
+      ]
+    }
+  }
+}
+```

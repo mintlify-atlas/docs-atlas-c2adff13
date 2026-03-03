@@ -1,0 +1,173 @@
+---
+title: "Web Search Aggregation"
+description: "Aggregate multiple search providers (Brave and Tavily) into a unified web_search category"
+---
+
+This example shows how to aggregate multiple web search providers behind a single UMCP category, making it easy to query different search engines through a unified interface.
+
+## Use Case
+
+You want to:
+- Use multiple search APIs (Brave and Tavily) in your LLM workflows
+- Avoid managing separate MCP server entries for each provider
+- Get namespaced tools like `web_search.brave.search` and `web_search.tavily.search`
+- Rotate API keys automatically for rate limiting
+
+## Before: Separate Servers
+
+Without UMCP, your host MCP client config would require separate entries:
+
+```json
+{
+  "mcpServers": {
+    "brave": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "env": { "BRAVE_API_KEY": "..." }
+    },
+    "tavily": {
+      "command": "npx",
+      "args": ["-y", "tavily-mcp"],
+      "env": { "TAVILY_API_KEY": "..." }
+    }
+  }
+}
+```
+
+**Problems:**
+- Two separate server connections
+- Tools named just `search` (conflicts)
+- No automatic key rotation
+- More complex configuration management
+
+## After: Unified with UMCP
+
+### Step 1: Configure UMCP
+
+Create or edit `~/.config/umcp/umcp.jsonc`:
+
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/grittyninja/umcp/main/umcp.config.schema.json",
+
+  "categories": {
+    "web_search": {
+      "providers": [
+        {
+          "name": "brave",
+          "transport": "stdio",
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+          "env": {
+            "BRAVE_API_KEY": [
+              "BRAVE_API_KEY_1",
+              "BRAVE_API_KEY_2",
+              "BRAVE_API_KEY_3"
+            ]
+          },
+          "tools": [
+            {
+              "upstream": "search",
+              "alias": "search"
+            }
+          ]
+        },
+        {
+          "name": "tavily",
+          "transport": "stdio",
+          "command": "npx",
+          "args": ["-y", "tavily-mcp"],
+          "env": {
+            "TAVILY_API_KEY": "TAVILY_API_KEY"
+          }
+          // tools omitted => auto-discover all tavily tools
+        }
+      ]
+    }
+  }
+}
+```
+
+### Step 2: Update Host Client Config
+
+Replace the two separate entries with a single UMCP entry:
+
+```json
+{
+  "mcpServers": {
+    "umcp": {
+      "command": "npx",
+      "args": ["-y", "github:grittyninja/umcp", "serve", "--transport", "stdio"]
+    }
+  }
+}
+```
+
+## Resulting Tools
+
+Your host MCP client will now see these namespaced tools:
+
+- `web_search.brave.search` - Search using Brave API
+- `web_search.tavily.search` - Search using Tavily API
+- `web_search.tavily.*` - Any other tools Tavily provides (auto-discovered)
+
+The tool names follow the pattern: `{category}.{provider}.{tool}`
+
+## Key Features Demonstrated
+
+### Round-Robin API Key Rotation
+
+Notice the Brave configuration uses an array of API keys:
+
+```jsonc
+"BRAVE_API_KEY": [
+  "BRAVE_API_KEY_1",
+  "BRAVE_API_KEY_2",
+  "BRAVE_API_KEY_3"
+]
+```
+
+UMCP automatically rotates through these keys on each invocation, helping distribute load and avoid rate limits.
+
+### Tool Aliasing
+
+Brave explicitly maps the upstream `search` tool:
+
+```jsonc
+"tools": [
+  {
+    "upstream": "search",
+    "alias": "search"
+  }
+]
+```
+
+This becomes `web_search.brave.search` in the final namespace.
+
+### Auto-Discovery
+
+Tavily omits the `tools` field entirely, so UMCP automatically discovers and exposes all tools from the Tavily MCP server.
+
+## Testing the Configuration
+
+Validate your configuration:
+
+```bash
+umcp validate
+```
+
+Dry-run to see what tools would be registered:
+
+```bash
+umcp dry-run
+```
+
+This shows all discovered tools without starting the server.
+
+## Benefits
+
+✓ Single MCP server entry in your host config
+✓ Clear tool naming: know which provider you're using
+✓ Automatic API key rotation for better rate limiting
+✓ Easy to add more search providers later
+✓ Centralized configuration in `umcp.jsonc`

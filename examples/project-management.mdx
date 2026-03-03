@@ -1,0 +1,202 @@
+---
+title: "Project Management Integration"
+description: "Connect to Linear MCP server with HTTP transport and custom tool aliases"
+---
+
+This example demonstrates connecting to a project management system (Linear) via HTTP transport and using tool aliasing to create more intuitive names.
+
+## Use Case
+
+You want to:
+- Connect to a Linear MCP server running on HTTP
+- Rename Linear's `create_issue` tool to something more generic like `add_task`
+- Organize project management tools under a dedicated category
+- Keep your host config minimal while maintaining flexibility
+
+## Before: Direct Linear Connection
+
+Without UMCP, you'd configure Linear directly in your host MCP client:
+
+```json
+{
+  "mcpServers": {
+    "linear": {
+      "url": "https://linear-mcp.example.com/mcp"
+    }
+  }
+}
+```
+
+**Problems:**
+- Tools use Linear-specific names like `create_issue`
+- Hard to combine with other project management tools later
+- No namespacing if you add Jira, Asana, etc.
+- Direct dependency on Linear's naming conventions
+
+## After: Organized with UMCP
+
+### Step 1: Configure UMCP
+
+Create or edit `~/.config/umcp/umcp.jsonc`:
+
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/grittyninja/umcp/main/umcp.config.schema.json",
+
+  "categories": {
+    "project_mgmt": {
+      "providers": [
+        {
+          "name": "linear",
+          "transport": "streamable-http",
+          "url": "https://linear-mcp.example.com/mcp",
+          "tools": [
+            {
+              "upstream": "create_issue",
+              "alias": "add_task"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+### Step 2: Update Host Client Config
+
+Replace the Linear entry with UMCP:
+
+```json
+{
+  "mcpServers": {
+    "umcp": {
+      "command": "npx",
+      "args": ["-y", "github:grittyninja/umcp", "serve", "--transport", "stdio"]
+    }
+  }
+}
+```
+
+## Resulting Tools
+
+Your host MCP client will see:
+
+- `project_mgmt.linear.add_task` - Create tasks in Linear (aliased from `create_issue`)
+
+The original Linear tool `create_issue` is now available as the more generic `add_task` under the `project_mgmt` namespace.
+
+## Key Features Demonstrated
+
+### HTTP Transport
+
+UMCP supports connecting to upstream MCP servers via HTTP:
+
+```jsonc
+"transport": "streamable-http",
+"url": "https://linear-mcp.example.com/mcp"
+```
+
+This is useful when:
+- The MCP server runs remotely
+- You don't want to manage local processes
+- Multiple clients need to share the same server
+- The server requires specific network access
+
+### Tool Aliasing for Abstraction
+
+The `tools` field maps upstream tool names to custom aliases:
+
+```jsonc
+"tools": [
+  {
+    "upstream": "create_issue",  // Linear's original name
+    "alias": "add_task"           // Your preferred name
+  }
+]
+```
+
+Benefits:
+- Abstract away provider-specific naming
+- Use consistent terminology across tools
+- Easier to swap providers later
+- More intuitive for LLM reasoning
+
+### Category Organization
+
+The `project_mgmt` category provides:
+- Logical grouping of related functionality
+- Clear namespace separation
+- Easy expansion with more providers
+
+## Expanding to Multiple Providers
+
+Later, you can easily add more project management tools:
+
+```jsonc
+"project_mgmt": {
+  "providers": [
+    {
+      "name": "linear",
+      "transport": "streamable-http",
+      "url": "https://linear-mcp.example.com/mcp",
+      "tools": [
+        {
+          "upstream": "create_issue",
+          "alias": "add_task"
+        }
+      ]
+    },
+    {
+      "name": "jira",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "jira-mcp"],
+      "tools": [
+        {
+          "upstream": "create_ticket",
+          "alias": "add_task"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Now you have:
+- `project_mgmt.linear.add_task`
+- `project_mgmt.jira.add_task`
+
+Both use consistent naming despite different upstream implementations.
+
+## Testing the Configuration
+
+Validate your configuration:
+
+```bash
+umcp validate
+```
+
+Dry-run to see registered tools:
+
+```bash
+umcp dry-run
+```
+
+Look for output like:
+```json
+{
+  "tool": "project_mgmt.linear.add_task",
+  "upstream": "create_issue",
+  "provider": "linear"
+}
+```
+
+## Benefits
+
+✓ HTTP transport support for remote servers
+✓ Custom tool naming for better abstraction
+✓ Organized under logical categories
+✓ Easy to add more project management providers
+✓ Consistent interface across different tools
+✓ Single entry point in host config

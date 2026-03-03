@@ -1,0 +1,383 @@
+---
+title: Environment Variables
+description: Configure environment variables and implement round-robin rotation for API keys
+---
+
+Environment variables in UMCP allow you to pass secrets, API keys, and configuration values to MCP providers. UMCP supports both single values and arrays for round-robin rotation.
+
+## Basic Usage
+
+Define environment variables in the `env` object of a provider:
+
+```jsonc
+{
+  "name": "brave",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+  "env": {
+    "BRAVE_API_KEY": "your-api-key-here",
+    "DEBUG": "false"
+  }
+}
+```
+
+## Schema Reference
+
+<ParamField path="env" type="object" optional>
+  Map of environment variable names to values
+  
+  Each value can be either:
+  - A single string
+  - An array of strings (for round-robin rotation)
+</ParamField>
+
+<ParamField path="env.<KEY>" type="string | string[]">
+  Environment variable value
+  
+  **Single string:**
+  ```json
+  "API_KEY": "your-key"
+  ```
+  
+  **Array (round-robin):**
+  ```json
+  "API_KEY": ["key1", "key2", "key3"]
+  ```
+  
+  Arrays must contain at least one non-empty string.
+</ParamField>
+
+## Single Values
+
+Use a string for environment variables that don't need rotation:
+
+```jsonc
+{
+  "env": {
+    "API_KEY": "your-api-key",
+    "API_ENDPOINT": "https://api.example.com",
+    "DEBUG": "true",
+    "TIMEOUT": "30000"
+  }
+}
+```
+
+## Round-Robin Rotation
+
+UMCP supports round-robin rotation for environment variables by providing an array of values. This is useful for:
+
+- **Load balancing** across multiple API keys
+- **Rate limit management** by rotating between keys
+- **High availability** with fallback credentials
+
+### Configuration
+
+Provide an array of strings instead of a single value:
+
+```jsonc
+{
+  "name": "brave",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+  "env": {
+    "BRAVE_API_KEY": [
+      "BRAVE_API_KEY_1",
+      "BRAVE_API_KEY_2",
+      "BRAVE_API_KEY_3"
+    ]
+  }
+}
+```
+
+### How It Works
+
+When you provide an array of values:
+
+1. **First invocation:** Uses the first value (`BRAVE_API_KEY_1`)
+2. **Second invocation:** Uses the second value (`BRAVE_API_KEY_2`)
+3. **Third invocation:** Uses the third value (`BRAVE_API_KEY_3`)
+4. **Fourth invocation:** Wraps back to the first value (`BRAVE_API_KEY_1`)
+
+This continues in a circular fashion, distributing load across all provided values.
+
+<Note>
+Rotation happens per provider invocation, not per tool call. Each time the provider process is started, the next value in the rotation is used.
+</Note>
+
+### Benefits
+
+**Rate Limit Distribution:**
+```jsonc
+{
+  "env": {
+    // Distribute requests across 5 API keys
+    // Each key handles 20% of the load
+    "API_KEY": [
+      "key1",
+      "key2",
+      "key3",
+      "key4",
+      "key5"
+    ]
+  }
+}
+```
+
+**High Availability:**
+```jsonc
+{
+  "env": {
+    // Rotate between production and backup credentials
+    "API_KEY": [
+      "production-key",
+      "backup-key-1",
+      "backup-key-2"
+    ]
+  }
+}
+```
+
+**Load Balancing:**
+```jsonc
+{
+  "env": {
+    // Balance load across multiple accounts
+    "ACCOUNT_ID": [
+      "account-1",
+      "account-2",
+      "account-3"
+    ]
+  }
+}
+```
+
+## Multiple Environment Variables
+
+You can mix single values and arrays:
+
+```jsonc
+{
+  "env": {
+    // Rotated API key
+    "API_KEY": [
+      "key1",
+      "key2",
+      "key3"
+    ],
+    // Static configuration
+    "API_ENDPOINT": "https://api.example.com",
+    "TIMEOUT": "30000",
+    // Rotated account ID
+    "ACCOUNT_ID": [
+      "account-1",
+      "account-2"
+    ]
+  }
+}
+```
+
+## Validation Rules
+
+UMCP enforces these validation rules for environment variables:
+
+1. **String or array:** Values must be either a string or an array of strings
+2. **Non-empty arrays:** Arrays must contain at least one element
+3. **Non-empty strings:** Array elements must be non-empty strings
+4. **Optional field:** The `env` object itself is optional
+
+## Examples
+
+### Single API Key
+
+```jsonc
+{
+  "name": "tavily",
+  "command": "npx",
+  "args": ["-y", "tavily-mcp"],
+  "env": {
+    "TAVILY_API_KEY": "your-single-api-key"
+  }
+}
+```
+
+### Multiple Rotating Keys
+
+```jsonc
+{
+  "name": "brave",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+  "env": {
+    "BRAVE_API_KEY": [
+      "key-1-for-brave",
+      "key-2-for-brave",
+      "key-3-for-brave",
+      "key-4-for-brave",
+      "key-5-for-brave"
+    ]
+  }
+}
+```
+
+### Multiple Variables with Rotation
+
+```jsonc
+{
+  "name": "database",
+  "command": "node",
+  "args": ["/path/to/db-server.js"],
+  "env": {
+    // Rotate between read replicas
+    "DB_HOST": [
+      "replica-1.example.com",
+      "replica-2.example.com",
+      "replica-3.example.com"
+    ],
+    // Static port
+    "DB_PORT": "5432",
+    // Rotate credentials
+    "DB_PASSWORD": [
+      "password-1",
+      "password-2"
+    ]
+  }
+}
+```
+
+### Configuration Values
+
+```jsonc
+{
+  "name": "custom_server",
+  "command": "python",
+  "args": ["/path/to/server.py"],
+  "env": {
+    "PYTHONUNBUFFERED": "1",
+    "LOG_LEVEL": "info",
+    "CACHE_TTL": "3600",
+    "MAX_RETRIES": "3"
+  }
+}
+```
+
+## Security Best Practices
+
+<Warning>
+**Never commit secrets to version control.** The examples above show placeholder values. In production, use actual secrets stored securely.
+</Warning>
+
+### Use Environment Variable References
+
+Instead of hardcoding secrets in the config file, reference environment variables:
+
+```jsonc
+{
+  "env": {
+    // Reference environment variables from the host
+    "BRAVE_API_KEY": "${BRAVE_KEY_1}",
+    "TAVILY_API_KEY": "${TAVILY_KEY}"
+  }
+}
+```
+
+<Note>
+UMCP passes the `env` object directly to the provider process. If your provider supports environment variable expansion, you can use `${VAR}` syntax.
+</Note>
+
+### Separate Config from Secrets
+
+1. **Check in:** Config file with placeholder values
+2. **Don't check in:** Config file with actual secrets
+3. **Use:** Secret management tools (Vault, AWS Secrets Manager, etc.)
+
+### Rotate Keys Regularly
+
+When using arrays for rotation:
+
+1. **Generate new keys** in your API provider dashboard
+2. **Add to array** without removing old keys
+3. **Test** that new keys work
+4. **Remove old keys** after confirming rotation is working
+
+## Common Patterns
+
+### Development vs Production
+
+```jsonc
+{
+  "categories": {
+    "web_search_dev": {
+      "providers": [
+        {
+          "name": "brave",
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+          "env": {
+            "BRAVE_API_KEY": "dev-api-key"
+          }
+        }
+      ]
+    },
+    "web_search_prod": {
+      "providers": [
+        {
+          "name": "brave",
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+          "env": {
+            "BRAVE_API_KEY": [
+              "prod-key-1",
+              "prod-key-2",
+              "prod-key-3"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+### Multi-Region Setup
+
+```jsonc
+{
+  "env": {
+    "API_ENDPOINT": [
+      "https://us-east.api.example.com",
+      "https://us-west.api.example.com",
+      "https://eu-west.api.example.com"
+    ],
+    "API_KEY": "shared-key"
+  }
+}
+```
+
+## Error Messages
+
+### Empty array
+
+```
+Config validation failed: env values must be non-empty string or non-empty array of strings
+```
+
+**Solution:** Ensure arrays contain at least one element.
+
+### Invalid value type
+
+```
+Config validation failed: env values must be string or array of strings
+```
+
+**Solution:** Use only strings or arrays of strings for environment variable values.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Provider Configuration" icon="server" href="/configuration/providers">
+    Learn more about provider settings
+  </Card>
+  <Card title="Configuration Overview" icon="book" href="/configuration/overview">
+    Review the complete configuration schema
+  </Card>
+</CardGroup>

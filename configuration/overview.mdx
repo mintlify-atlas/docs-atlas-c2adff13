@@ -1,0 +1,175 @@
+---
+title: Configuration Overview
+description: Learn about UMCP's JSONC configuration file structure and schema
+---
+
+UMCP uses a single JSONC configuration file to define categories, providers, tools, and environment variables. This file controls how UMCP connects to MCP servers and exposes their tools.
+
+## Configuration File Location
+
+By default, UMCP looks for the configuration file at:
+
+```
+~/.config/umcp/umcp.jsonc
+```
+
+You can override this location using the `--config` flag:
+
+```bash
+umcp --config /path/to/custom/config.jsonc
+```
+
+<Note>
+Only `.jsonc` files are supported. The configuration file must have a `.jsonc` extension.
+</Note>
+
+## Auto-Creation Behavior
+
+If the configuration file doesn't exist when UMCP starts, it will automatically create a default configuration file with example providers. This helps you get started quickly:
+
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/grittyninja/umcp/main/umcp.config.schema.json",
+  "categories": {
+    "web_search": {
+      "providers": [
+        {
+          "name": "brave",
+          "transport": "stdio",
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+          "env": {
+            "BRAVE_API_KEY": ["BRAVE_API_KEY_1", "BRAVE_API_KEY_2"]
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+## Schema Validation
+
+UMCP includes a JSON Schema for editor validation and autocomplete. Add this to the top of your config file:
+
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/grittyninja/umcp/main/umcp.config.schema.json"
+}
+```
+
+<ParamField path="$schema" type="string" optional>
+  URL to the JSON Schema for editor validation
+  
+  **Default:** `https://raw.githubusercontent.com/grittyninja/umcp/main/umcp.config.schema.json`
+</ParamField>
+
+## Configuration Schema
+
+The configuration file has a hierarchical structure:
+
+<CardGroup cols={2}>
+  <Card title="Categories" icon="folder-tree" href="/configuration/categories">
+    Group related providers by functionality
+  </Card>
+  <Card title="Providers" icon="server" href="/configuration/providers">
+    Define MCP server connections
+  </Card>
+  <Card title="Tools" icon="wrench" href="/configuration/tools">
+    Map and control tool exposure
+  </Card>
+  <Card title="Environment Variables" icon="key" href="/configuration/environment-variables">
+    Configure secrets and credentials
+  </Card>
+</CardGroup>
+
+## Validation Rules
+
+UMCP validates your configuration file on startup:
+
+- **Required fields:** At least one category with at least one provider
+- **Naming constraints:** Category and provider names must match `[a-zA-Z0-9_-]+`
+- **Unique names:** Provider names must be unique within each category
+- **Transport requirements:** `stdio` requires `command`, `sse`/`streamable-http` require `url`
+- **Strict mode:** Unknown fields will cause validation errors
+
+<Warning>
+If validation fails, UMCP will log detailed error messages showing the path and issue. Fix these errors before UMCP can start.
+</Warning>
+
+## JSONC Features
+
+The configuration file supports JSONC (JSON with Comments):
+
+- **Comments:** Use `//` for line comments or `/* */` for block comments
+- **Trailing commas:** Allowed in objects and arrays
+- **Syntax highlighting:** Most editors support JSONC with the `.jsonc` extension
+
+## Example Configuration
+
+Here's a complete example showing multiple categories and providers:
+
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/grittyninja/umcp/main/umcp.config.schema.json",
+  
+  "categories": {
+    "web_search": {
+      "providers": [
+        {
+          "name": "brave",
+          "transport": "stdio",
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+          "env": {
+            "BRAVE_API_KEY": ["KEY_1", "KEY_2", "KEY_3"]
+          },
+          "tools": [
+            {
+              "upstream": "search",
+              "alias": "search",
+              "enabled": true
+            }
+          ]
+        },
+        {
+          "name": "tavily",
+          "transport": "stdio",
+          "command": "npx",
+          "args": ["-y", "tavily-mcp"],
+          "env": {
+            "TAVILY_API_KEY": "TAVILY_API_KEY"
+          }
+          // tools omitted -> auto-discover all tools
+        }
+      ]
+    },
+    "project_mgmt": {
+      "providers": [
+        {
+          "name": "linear",
+          "transport": "streamable-http",
+          "url": "https://linear-mcp.example.com/mcp",
+          "tools": [
+            {
+              "upstream": "create_issue",
+              "alias": "add_task"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configure Categories" icon="folder-tree" href="/configuration/categories">
+    Learn how to organize providers into categories
+  </Card>
+  <Card title="Add Providers" icon="server" href="/configuration/providers">
+    Connect MCP servers to UMCP
+  </Card>
+</CardGroup>

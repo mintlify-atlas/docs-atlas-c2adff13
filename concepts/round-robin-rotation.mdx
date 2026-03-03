@@ -1,0 +1,461 @@
+---
+title: Round-Robin Rotation
+description: Learn how UMCP rotates through multiple environment variable values to distribute API usage
+---
+
+## Overview
+
+UMCP supports **array-based environment variables** that automatically rotate through multiple values using a round-robin strategy. This feature is designed for distributing API requests across multiple API keys, tokens, or credentials, helping you:
+
+- Stay within rate limits by spreading requests across multiple accounts
+- Implement simple load balancing for API usage
+- Rotate credentials for security or compliance reasons
+
+## Configuration Syntax
+
+Environment variables can be defined as either a single string or an array of strings. From `config.ts:12`:
+```typescript
+const envValueSchema = z.union([z.string(), z.array(z.string().min(1)).min(1)]);
+```
+
+### Single Value (Static)
+
+```jsonc
+{
+  "env": {
+    "API_KEY": "single-api-key-12345"
+  }
+}
+```
+
+The same value is used for every request.
+
+### Array Values (Rotating)
+
+```jsonc
+{
+  "env": {
+    "API_KEY": [
+      "key-account-1",
+      "key-account-2",
+      "key-account-3"
+    ]
+  }
+}
+```
+
+UMCP cycles through the array on each provider invocation.
+
+## How Round-Robin Works
+
+### In-Memory State
+
+UMCP maintains rotation state in memory using a nested Map structure. From `roundRobinEnvPool.ts:7`:
+```typescript
+type RoundRobinState = Map<string, Map<string, number>>;
+```
+
+**Structure:**
+- Outer map: `providerId` → provider state
+- Inner map: `envKey` → current index
+
+This means:
+- Each provider has independent rotation state
+- Each environment variable key has its own rotation index
+- State is **not persisted** to disk
+
+### Pool Creation
+
+The round-robin pool is created at server startup. From `roundRobinEnvPool.ts:32-73`:
+```typescript
+export function createRoundRobinEnvPool(logger: Logger) {
+  const state: RoundRobinState = new Map();
+
+  function next(providerId: string, env: EnvMap): Record<string, string> {
+    if (!env) {
+      return {};
+    }
+
+    const resolved: Record<string, string> = {};
+    const providerState = state.get(providerId) ?? new Map<string, number>();
+    state.set(providerId, providerState);
+
+    for (const [key, value] of Object.entries(env)) {
+      if (typeof value === "string") {
+        resolved[key] = value;
+        continue;
+      }
+
+      const currentIndex = providerState.get(key) ?? 0;
+      const selected = value[currentIndex % value.length] ?? "";
+      const nextIndex = (currentIndex + 1) % value.length;
+      providerState.set(key, nextIndex);
+      resolved[key] = selected;
+
+      logger.info("env.rotated", "Rotated env key using round-robin", {
+        providerId,
+        key,
+        selectedIndex: currentIndex % value.length,
+        poolSize: value.length,
+        valuePreview: maskSecret(selected)
+      });
+    }
+
+    return resolved;
+  }
+
+  return {
+    hasRotatingEnv,
+    discoveryValues: resolveFirstEnvValues,
+    next
+  };
+}
+```
+
+### Rotation Algorithm
+
+**For each environment variable:**
+
+1. Check if the value is a string or array
+2. If string: Use the value directly
+3. If array:
+   - Get the current index for this provider/key (default: 0)
+   - Select the value at `currentIndex % arrayLength`
+   - Increment the index for next time: `(currentIndex + 1) % arrayLength`
+   - Log the rotation event
+
+From `roundRobinEnvPool.ts:50-62`:
+```typescript
+const currentIndex = providerState.get(key) ?? 0;
+const selected = value[currentIndex % value.length] ?? "";
+const nextIndex = (currentIndex + 1) % value.length;
+providerState.set(key, nextIndex);
+resolved[key] = selected;
+
+logger.info("env.rotated", "Rotated env key using round-robin", {
+  providerId,
+  key,
+  selectedIndex: currentIndex % value.length,
+  poolSize: value.length,
+  valuePreview: maskSecret(selected)
+});
+```
+
+## Discovery Values
+
+During tool discovery, UMCP uses the **first value** from each array to test provider connectivity. From `roundRobinEnvPool.ts:16-30`:
+```typescript
+function resolveFirstEnvValues(env: EnvMap): Record<string, string> {
+  if (!env) {
+    return {};
+  }
+
+  const resolved: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (typeof value === "string") {
+      resolved[key] = value;
+      continue;
+    }
+    resolved[key] = value[0] ?? "";
+  }
+  return resolved;
+}
+```
+
+This ensures that tool discovery succeeds with valid credentials, even when using rotation.
+
+## Detecting Rotating Environment Variables
+
+UMCP checks if any provider has rotating env vars. From `roundRobinEnvPool.ts:9-14`:
+```typescript
+export function hasRotatingEnv(env: EnvMap): boolean {
+  if (!env) {
+    return false;
+  }
+  return Object.values(env).some((value) => Array.isArray(value));
+}
+```
+
+## Logging and Security
+
+Rotation events are logged with masked values to avoid exposing secrets. From `roundRobinEnvPool.ts:56-62` and `logger.ts`:
+```typescript
+logger.info("env.rotated", "Rotated env key using round-robin", {
+  providerId,
+  key,
+  selectedIndex: currentIndex % value.length,
+  poolSize: value.length,
+  valuePreview: maskSecret(selected)
+});
+```
+
+The `maskSecret` function shows only a preview of the credential:
+```
+valuePreview: "key-a****"
+```
+
+## Example Usage
+
+### Basic Rotation
+
+**Configuration:**
+```jsonc
+{
+  "categories": {
+    "web_search": {
+      "providers": [
+        {
+          "name": "brave",
+          "transport": "stdio",
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+          "env": {
+            "BRAVE_API_KEY": [
+              "key-account-1",
+              "key-account-2",
+              "key-account-3"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+**Behavior:**
+- Request 1: Uses `key-account-1`
+- Request 2: Uses `key-account-2`
+- Request 3: Uses `key-account-3`
+- Request 4: Uses `key-account-1` (cycles back)
+- Request 5: Uses `key-account-2`
+- And so on...
+
+### Multiple Rotating Variables
+
+```jsonc
+{
+  "name": "analytics",
+  "transport": "stdio",
+  "command": "analytics-mcp",
+  "env": {
+    "API_KEY": [
+      "key-1",
+      "key-2"
+    ],
+    "API_SECRET": [
+      "secret-1",
+      "secret-2"
+    ]
+  }
+}
+```
+
+**Note:** Each variable rotates **independently**. The combinations might be:
+- Request 1: `key-1` + `secret-1`
+- Request 2: `key-2` + `secret-2`
+- Request 3: `key-1` + `secret-1` (both cycle)
+
+If you need paired rotation (key-1 always with secret-1), use multiple provider configurations instead.
+
+### Mixed Static and Rotating
+
+```jsonc
+{
+  "env": {
+    "API_ENDPOINT": "https://api.example.com",  // Static
+    "API_KEY": [                                 // Rotating
+      "key-1",
+      "key-2",
+      "key-3"
+    ],
+    "USER_AGENT": "UMCP/1.0"                    // Static
+  }
+}
+```
+
+Only `API_KEY` rotates; other variables remain constant.
+
+## State Behavior
+
+### Startup Behavior
+
+When UMCP starts:
+1. All rotation indices initialize to `0`
+2. First tool discovery uses the first value in each array
+3. First actual tool call uses the first value and increments the index
+
+### Per-Provider Isolation
+
+Each provider maintains independent rotation state. Consider this configuration:
+
+```jsonc
+{
+  "categories": {
+    "search": {
+      "providers": [
+        {
+          "name": "brave-1",
+          "command": "brave-mcp",
+          "env": { "API_KEY": ["key-a", "key-b"] }
+        },
+        {
+          "name": "brave-2",
+          "command": "brave-mcp",
+          "env": { "API_KEY": ["key-c", "key-d"] }
+        }
+      ]
+    }
+  }
+}
+```
+
+- Calls to `search.brave-1.*` rotate between `key-a` and `key-b`
+- Calls to `search.brave-2.*` rotate between `key-c` and `key-d`
+- The two providers don't affect each other's rotation state
+
+### Restart Behavior
+
+Rotation state is **not persisted**. When UMCP restarts:
+- All indices reset to `0`
+- Rotation starts over from the first value in each array
+
+If you need persistent rotation or more sophisticated distribution, consider:
+- External load balancers
+- API gateway services
+- Database-backed credential rotation
+
+## Per-Invocation Rotation
+
+Rotation happens **per provider invocation**, not per tool call. This means:
+
+- If a provider exposes multiple tools, they share the same credential for that invocation
+- The credential rotates when the provider is invoked again (for any tool)
+
+**Example:**
+```
+1. Call search.brave.web_search → Uses key-1
+2. Call search.brave.image_search → Uses key-2 (new invocation)
+3. Call search.brave.web_search → Uses key-3 (new invocation)
+```
+
+## Error Handling
+
+### Empty Arrays
+
+The schema prevents empty arrays. From `config.ts:12`:
+```typescript
+z.array(z.string().min(1)).min(1)
+```
+
+This validation ensures:
+- Arrays must have at least one element
+- Each element must be a non-empty string
+
+### Fallback for Missing Values
+
+If an array value is somehow undefined, UMCP falls back to an empty string. From `roundRobinEnvPool.ts:51`:
+```typescript
+const selected = value[currentIndex % value.length] ?? "";
+```
+
+## Use Cases
+
+### Rate Limit Distribution
+
+API provider allows 100 requests/minute per key:
+```jsonc
+{
+  "env": {
+    "API_KEY": [
+      "account-1-key",
+      "account-2-key",
+      "account-3-key",
+      "account-4-key",
+      "account-5-key"
+    ]
+  }
+}
+```
+
+Effective rate limit: 500 requests/minute across 5 accounts.
+
+### Cost Distribution
+
+API charges per request. Rotate across multiple billing accounts to spread costs:
+```jsonc
+{
+  "env": {
+    "BILLING_TOKEN": [
+      "project-a-token",
+      "project-b-token",
+      "project-c-token"
+    ]
+  }
+}
+```
+
+### Geographic Distribution
+
+Rotate between regional API keys for data residency:
+```jsonc
+{
+  "env": {
+    "REGION_KEY": [
+      "us-east-1-key",
+      "eu-west-1-key",
+      "ap-south-1-key"
+    ]
+  }
+}
+```
+
+### Development vs. Production Keys
+
+Use rotation to test with multiple environments:
+```jsonc
+{
+  "env": {
+    "API_KEY": [
+      "dev-key-1",
+      "dev-key-2",
+      "staging-key-1"
+    ]
+  }
+}
+```
+
+## Limitations
+
+1. **No persistence**: State resets on server restart
+2. **No coordination**: Multiple UMCP instances don't share rotation state
+3. **No paired rotation**: Each variable rotates independently
+4. **No weighted rotation**: All values are equally likely
+5. **No health awareness**: Failed keys still rotate in (unless provider reconnects)
+
+## Best Practices
+
+1. **Use consistent array lengths**: Makes rotation patterns more predictable
+2. **Test all credentials**: Ensure every key in the array is valid before deployment
+3. **Monitor usage**: Watch logs to verify rotation is working as expected
+4. **Plan for restarts**: Don't rely on rotation state persisting across restarts
+5. **Document ownership**: Keep track of which keys belong to which accounts
+
+## Example Log Output
+
+When rotation occurs, you'll see logs like:
+```
+[INFO] env.rotated: Rotated env key using round-robin {
+  providerId: "web_search/brave/0",
+  key: "BRAVE_API_KEY",
+  selectedIndex: 0,
+  poolSize: 3,
+  valuePreview: "key-****"
+}
+```
+
+This helps you:
+- Confirm rotation is working
+- Debug credential issues
+- Audit API key usage
+- Track which keys are being used

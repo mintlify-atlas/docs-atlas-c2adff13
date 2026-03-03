@@ -1,0 +1,269 @@
+---
+title: umcp validate
+description: Validate your UMCP configuration file
+---
+
+The `validate` command checks your UMCP configuration file for errors without starting the server.
+
+## Usage
+
+```bash
+umcp validate [OPTIONS]
+```
+
+**Compatibility flag syntax:**
+
+```bash
+umcp --validate [OPTIONS]
+```
+
+Both forms are functionally identical.
+
+## Flags
+
+<ParamField path="--config" type="string" default="~/.config/umcp/umcp.jsonc">
+  Path to the UMCP configuration file to validate.
+  
+  **Examples:**
+  ```bash
+  umcp validate --config /path/to/custom.jsonc
+  umcp validate --config=~/.config/umcp/production.jsonc
+  ```
+</ParamField>
+
+## Examples
+
+### Validate Default Config
+
+```bash
+umcp validate
+```
+
+Validates `~/.config/umcp/umcp.jsonc`.
+
+**Success output:**
+
+```
+Config is valid: ~/.config/umcp/umcp.jsonc
+```
+
+### Validate Custom Config
+
+```bash
+umcp validate --config /etc/umcp/production.jsonc
+```
+
+**Success output:**
+
+```
+Config is valid: /etc/umcp/production.jsonc
+```
+
+### Using Compatibility Flag
+
+```bash
+umcp --validate --config ~/my-config.jsonc
+```
+
+Identical to `umcp validate --config ~/my-config.jsonc`.
+
+## What Gets Validated
+
+The validate command checks:
+
+1. **File existence and readability**
+   - Verifies the config file exists
+   - Checks file permissions
+
+2. **JSON/JSONC syntax**
+   - Validates proper JSON formatting
+   - Supports JSONC features (comments, trailing commas)
+
+3. **Schema compliance**
+   - Validates against the UMCP config schema
+   - Checks required fields
+   - Validates field types and formats
+
+4. **Category and provider structure**
+   - Ensures categories exist
+   - Validates provider definitions
+   - Checks transport configurations
+
+5. **Naming rules**
+   - Category names match `[a-zA-Z0-9_-]+`
+   - Provider names match `[a-zA-Z0-9_-]+`
+   - Tool aliases match `[a-zA-Z0-9_-]+`
+
+6. **Environment variables**
+   - Validates env key-value pairs
+   - Checks array values for round-robin rotation
+
+## Validation Errors
+
+### File Not Found
+
+```bash
+umcp validate --config /nonexistent/config.jsonc
+```
+
+```
+Error: Config file not found: /nonexistent/config.jsonc
+```
+
+### Invalid JSON Syntax
+
+If your config has JSON syntax errors:
+
+```json
+{
+  "categories": {
+    "web_search": {
+      "providers": {
+        "brave": {
+          // missing closing brace
+```
+
+```
+Error: Invalid JSON in config file
+Unexpected end of JSON input
+```
+
+### Schema Validation Errors
+
+If your config doesn't match the schema:
+
+```json
+{
+  "categories": {
+    "web_search": {
+      "providers": {
+        "brave": {
+          "transport": "invalid-transport"
+        }
+      }
+    }
+  }
+}
+```
+
+```json
+{"level":"error","event":"config.invalid","message":"Configuration validation failed","data":{"errors":["Invalid transport type: invalid-transport"]}}
+```
+
+The validation process will report all issues found in the configuration.
+
+### Invalid Naming
+
+If category, provider, or alias names contain invalid characters:
+
+```json
+{
+  "categories": {
+    "web.search": {  // Invalid: contains '.'
+      "providers": {
+        "brave-search": {  // Valid
+          "transport": "stdio",
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-brave-search"]
+        }
+      }
+    }
+  }
+}
+```
+
+```
+Error: Invalid category name 'web.search'. Must match [a-zA-Z0-9_-]+
+```
+
+## Exit Codes
+
+- **0**: Configuration is valid
+- **Non-zero**: Validation failed or error occurred
+
+## Use Cases
+
+### CI/CD Validation
+
+```bash
+#!/bin/bash
+if umcp validate --config ./umcp.jsonc; then
+  echo "Config valid, deploying..."
+  # deployment steps
+else
+  echo "Config validation failed!"
+  exit 1
+fi
+```
+
+### Pre-commit Hook
+
+```bash
+#!/bin/bash
+# .git/hooks/pre-commit
+umcp validate || {
+  echo "UMCP config validation failed"
+  exit 1
+}
+```
+
+### Quick Config Check
+
+```bash
+# After editing config, validate before restarting
+vim ~/.config/umcp/umcp.jsonc
+umcp validate && umcp serve
+```
+
+## Structured Logs
+
+Validation emits structured logs to stderr:
+
+**Success:**
+
+```json
+{"level":"info","event":"config.loaded","message":"Configuration loaded","data":{"path":"~/.config/umcp/umcp.jsonc"}}
+```
+
+**Failure:**
+
+```json
+{"level":"error","event":"config.invalid","message":"Configuration validation failed","data":{"errors":["Error details"]}}
+```
+
+## Validation vs. Dry Run
+
+<AccordionGroup>
+  <Accordion title="When to use validate">
+    Use `validate` to:
+    - Check config syntax and schema before starting the server
+    - Validate configs in CI/CD pipelines
+    - Quick syntax checks after editing
+    - **Does not connect to upstream servers**
+  </Accordion>
+  
+  <Accordion title="When to use dry-run">
+    Use `dry-run` to:
+    - Preview actual tool discovery from upstream servers
+    - Test provider connections
+    - See the final namespaced tool list
+    - Debug tool aliasing
+    - **Connects to upstream servers**
+    
+    See [dry-run command](/cli/dry-run) for details.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Dry Run" icon="list" href="/cli/dry-run">
+    Preview tool discovery
+  </Card>
+  <Card title="Serve" icon="server" href="/cli/serve">
+    Start the UMCP server
+  </Card>
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Learn about config schema
+  </Card>
+</CardGroup>

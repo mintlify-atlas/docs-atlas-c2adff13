@@ -1,0 +1,323 @@
+---
+title: umcp dry-run
+description: Preview tool discovery without starting the server
+---
+
+The `dry-run` command connects to all configured upstream MCP servers, discovers their tools, and displays the final namespaced tool list without actually starting the UMCP server.
+
+## Usage
+
+```bash
+umcp dry-run [OPTIONS]
+```
+
+**Compatibility flag syntax:**
+
+```bash
+umcp --dry-run [OPTIONS]
+```
+
+Both forms are functionally identical.
+
+## Flags
+
+<ParamField path="--config" type="string" default="~/.config/umcp/umcp.jsonc">
+  Path to the UMCP configuration file.
+  
+  **Examples:**
+  ```bash
+  umcp dry-run --config /path/to/custom.jsonc
+  umcp dry-run --config=~/.config/umcp/production.jsonc
+  ```
+</ParamField>
+
+## Examples
+
+### Basic Dry Run
+
+```bash
+umcp dry-run
+```
+
+Connects to all providers in `~/.config/umcp/umcp.jsonc` and displays discovered tools.
+
+**Example output:**
+
+```
+web_search.brave.search
+web_search.brave.local_search
+web_search.tavily.search
+web_search.tavily.extract
+project_mgmt.linear.create_issue
+project_mgmt.linear.update_issue
+project_mgmt.linear.search_issues
+```
+
+### Dry Run with Custom Config
+
+```bash
+umcp dry-run --config ~/projects/my-app/umcp.jsonc
+```
+
+### Using Compatibility Flag
+
+```bash
+umcp --dry-run --config /etc/umcp/production.jsonc
+```
+
+Identical to `umcp dry-run --config /etc/umcp/production.jsonc`.
+
+## What Happens During Dry Run
+
+The dry-run command:
+
+1. **Loads configuration** from the specified config file
+   ```json
+   {"level":"info","event":"config.loaded","message":"Configuration loaded"}
+   ```
+
+2. **Connects to each provider** defined in your config
+   ```json
+   {"level":"info","event":"provider.connected","message":"Provider connected","data":{"category":"web_search","provider":"brave"}}
+   ```
+
+3. **Discovers tools** from all upstream servers
+   ```json
+   {"level":"info","event":"tool.discovered","message":"Tool discovered","data":{"upstream":"search","canonical":"web_search.brave.search"}}
+   ```
+
+4. **Applies tool aliases** if configured
+
+5. **Displays the final tool list** to stdout
+
+6. **Disconnects from all providers**
+   ```json
+   {"level":"info","event":"provider.disconnected","message":"Provider disconnected","data":{"category":"web_search","provider":"brave"}}
+   ```
+
+7. **Logs completion**
+   ```json
+   {"level":"info","event":"dry_run.complete","message":"Dry-run completed","data":{"count":7}}
+   ```
+
+## Output Format
+
+The tool list is printed to stdout, one tool per line:
+
+```
+{category}.{provider}.{tool}
+```
+
+**Naming format:**
+- Category: From your config (e.g., `web_search`, `project_mgmt`)
+- Provider: From your config (e.g., `brave`, `tavily`, `linear`)
+- Tool: Either the upstream tool name or your configured alias
+
+## Tool Aliasing Example
+
+Given this config:
+
+```json
+{
+  "categories": {
+    "web_search": {
+      "providers": {
+        "brave": {
+          "transport": "stdio",
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+          "tools": {
+            "brave_web_search": {
+              "upstream": "search",
+              "alias": "search"
+            },
+            "brave_local_search": {
+              "upstream": "local_search",
+              "alias": "local"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+**Dry-run output:**
+
+```
+web_search.brave.search
+web_search.brave.local
+```
+
+Notice how:
+- `search` (upstream) → `web_search.brave.search` (canonical with alias)
+- `local_search` (upstream) → `web_search.brave.local` (canonical with alias)
+
+## Use Cases
+
+### Verify Tool Discovery
+
+Check that all expected tools are discovered:
+
+```bash
+umcp dry-run | grep "web_search.brave"
+```
+
+### Count Total Tools
+
+```bash
+umcp dry-run | wc -l
+```
+
+### Debug Tool Naming
+
+Verify that tool aliases are applied correctly:
+
+```bash
+umcp dry-run | grep "project_mgmt"
+```
+
+### Pre-deployment Check
+
+Ensure all providers are reachable before deploying:
+
+```bash
+#!/bin/bash
+if umcp dry-run > /dev/null 2>&1; then
+  echo "All providers reachable"
+  # deploy
+else
+  echo "Provider connection failed"
+  exit 1
+fi
+```
+
+### Compare Configurations
+
+Compare tool discovery between different configs:
+
+```bash
+diff <(umcp dry-run --config dev.jsonc) <(umcp dry-run --config prod.jsonc)
+```
+
+## Error Handling
+
+### Provider Connection Failure
+
+If a provider fails to connect:
+
+```json
+{"level":"error","event":"provider.error","message":"Failed to connect to provider","data":{"category":"web_search","provider":"brave","error":"Command not found: npx"}}
+```
+
+The dry-run will:
+- Log the error to stderr
+- Continue with other providers
+- Exit with a non-zero code
+
+### Invalid Config
+
+If the config file has errors, dry-run will fail validation:
+
+```bash
+umcp dry-run --config invalid.jsonc
+```
+
+```json
+{"level":"error","event":"config.invalid","message":"Configuration validation failed"}
+```
+
+### Missing Upstream Tools
+
+If you configure a tool alias for a non-existent upstream tool:
+
+```json
+{
+  "tools": {
+    "my_tool": {
+      "upstream": "nonexistent_tool",
+      "alias": "search"
+    }
+  }
+}
+```
+
+The dry-run will warn:
+
+```json
+{"level":"warn","event":"tool.not_found","message":"Upstream tool not found","data":{"upstream":"nonexistent_tool","provider":"brave"}}
+```
+
+## Exit Codes
+
+- **0**: Dry-run completed successfully, all tools discovered
+- **Non-zero**: Error occurred (config invalid, provider failed, etc.)
+
+## Structured Logs
+
+All logs are emitted to stderr as JSON:
+
+```json
+{"level":"info","event":"config.loaded","message":"Configuration loaded","data":{"path":"~/.config/umcp/umcp.jsonc"}}
+{"level":"info","event":"provider.connected","message":"Provider connected","data":{"category":"web_search","provider":"brave"}}
+{"level":"info","event":"tool.discovered","message":"Tool discovered","data":{"upstream":"search","canonical":"web_search.brave.search"}}
+{"level":"info","event":"dry_run.complete","message":"Dry-run completed","data":{"count":3}}
+```
+
+The tool list is printed to stdout, making it easy to pipe:
+
+```bash
+# Logs go to stderr, tools go to stdout
+umcp dry-run > tools.txt 2> logs.jsonl
+```
+
+## Dry Run vs. Validate
+
+<AccordionGroup>
+  <Accordion title="When to use dry-run">
+    Use `dry-run` to:
+    - Preview actual tool discovery from upstream servers
+    - Test provider connections and reachability
+    - Verify tool aliasing works correctly
+    - Debug tool naming issues
+    - Check that all expected tools are available
+    - **Connects to upstream servers** (takes longer)
+  </Accordion>
+  
+  <Accordion title="When to use validate">
+    Use `validate` to:
+    - Quick syntax and schema validation
+    - CI/CD config checks
+    - Pre-commit hooks
+    - **Does not connect to upstream servers** (faster)
+    
+    See [validate command](/cli/validate) for details.
+  </Accordion>
+</AccordionGroup>
+
+## Performance
+
+Dry-run performance depends on:
+- Number of configured providers
+- Provider connection speed (stdio vs. HTTP)
+- Network latency (for remote HTTP providers)
+- Number of tools each provider exposes
+
+Typical dry-run time:
+- 1-3 local stdio providers: 1-5 seconds
+- Multiple remote HTTP providers: 5-15 seconds
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Serve" icon="server" href="/cli/serve">
+    Start the UMCP server
+  </Card>
+  <Card title="Validate" icon="check" href="/cli/validate">
+    Validate your config
+  </Card>
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Learn about config schema
+  </Card>
+</CardGroup>

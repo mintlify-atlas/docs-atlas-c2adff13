@@ -1,80 +1,641 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick Start
+description: Get UMCP running in under 5 minutes with real examples
 ---
 
-## Get started in three steps
+## Overview
 
-Get your documentation site running locally and make your first customization.
+This guide will have you running UMCP with multiple MCP providers in under 5 minutes.
 
-### Step 1: Set up your local environment
+<Steps>
+  <Step title="Install UMCP">
+    Install via npx (no installation needed) or npm:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+    <CodeGroup>
+
+    ```bash npx (Recommended)
+    npx github:grittyninja/umcp --help
+    ```
+
+    ```bash npm
+    npm install github:grittyninja/umcp
+    ```
+
+    </CodeGroup>
+
+    <Check>Verify the installation by running `npx github:grittyninja/umcp --help`</Check>
+  </Step>
+
+  <Step title="Create Configuration File">
+    Run UMCP once to auto-generate the configuration file:
+
+    ```bash
+    npx github:grittyninja/umcp validate
+    ```
+
+    This creates `~/.config/umcp/umcp.jsonc` with detailed placeholder examples.
+
+    <Info>
+      The config file is created automatically with example providers and comprehensive inline documentation.
+    </Info>
+  </Step>
+
+  <Step title="Configure Your Providers">
+    Edit `~/.config/umcp/umcp.jsonc` to add your MCP providers:
+
+    ```jsonc ~/.config/umcp/umcp.jsonc
+    {
+      "$schema": "https://raw.githubusercontent.com/grittyninja/umcp/main/umcp.config.schema.json",
+
+      "categories": {
+        "web_search": {
+          "providers": [
+            {
+              "name": "brave",
+              "transport": "stdio",
+              "command": "npx",
+              "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+              "env": {
+                "BRAVE_API_KEY": [
+                  "your_key_1",
+                  "your_key_2",
+                  "your_key_3"
+                ]
+              }
+            },
+            {
+              "name": "tavily",
+              "transport": "stdio",
+              "command": "npx",
+              "args": ["-y", "tavily-mcp"],
+              "env": {
+                "TAVILY_API_KEY": "your_tavily_key"
+              }
+            }
+          ]
+        },
+        "project_mgmt": {
+          "providers": [
+            {
+              "name": "linear",
+              "transport": "streamable-http",
+              "url": "https://linear-mcp.example.com/mcp"
+            }
+          ]
+        }
+      }
+    }
+    ```
+
+    <Warning>
+      Replace placeholder API keys with your actual keys.
+    </Warning>
+  </Step>
+
+  <Step title="Validate Configuration">
+    Verify your configuration is valid:
+
+    ```bash
+    npx github:grittyninja/umcp validate
+    ```
+
+    Expected output:
+    ```
+    Config is valid: /Users/you/.config/umcp/umcp.jsonc
+    ```
+
+    <Tip>
+      If validation fails, UMCP will output detailed error messages pointing to the exact issue.
+    </Tip>
+  </Step>
+
+  <Step title="Preview Tools (Dry Run)">
+    See what tools UMCP will expose without actually connecting to providers:
+
+    ```bash
+    npx github:grittyninja/umcp dry-run
+    ```
+
+    Example output:
+    ```
+    Discovered tools:
+    - web_search.brave.search → brave_search (from brave/search)
+    - web_search.tavily.search → tavily_search (from tavily/search)
+    - project_mgmt.linear.add_task → linear_create_issue (from linear/create_issue)
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    Total: 3 tools from 3 providers in 2 categories
+    ```
 
-### Step 2: Deploy your changes
+    <Info>
+      Dry run discovers tools from all providers and shows how they'll be namespaced, but doesn't actually start the server.
+    </Info>
+  </Step>
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+  <Step title="Start UMCP Server">
+    Launch UMCP with your preferred transport:
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    <Tabs>
+      <Tab title="stdio (Recommended)">
+        ```bash
+        npx github:grittyninja/umcp serve --transport stdio
+        ```
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+        This starts UMCP in stdio mode, perfect for connecting from MCP hosts like Claude Desktop or other MCP clients.
 
-### Step 3: Go live
+        You'll see structured log output:
+        ```json
+        {"level":"info","event":"config.loaded","message":"Loaded umcp config","categories":2}
+        {"level":"info","event":"provider.connected","provider":"brave","category":"web_search"}
+        {"level":"info","event":"provider.connected","provider":"tavily","category":"web_search"}
+        {"level":"info","event":"server.started","message":"umcp started with stdio transport"}
+        ```
+      </Tab>
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+      <Tab title="HTTP">
+        ```bash
+        npx github:grittyninja/umcp serve --transport http --host 127.0.0.1 --port 8787 --path /mcp
+        ```
 
-## Next steps
+        This starts UMCP as an HTTP server at `http://127.0.0.1:8787/mcp`.
 
-Now that you have your docs running, explore these key features:
+        Log output:
+        ```json
+        {"level":"info","event":"config.loaded","message":"Loaded umcp config","categories":2}
+        {"level":"info","event":"server.started","message":"umcp started with streamable-http transport","host":"127.0.0.1","port":8787,"endpointPath":"/mcp"}
+        ```
 
-<CardGroup cols={2}>
+        <Note>
+          HTTP mode is useful for remote access or when integrating with web-based MCP clients.
+        </Note>
+      </Tab>
+    </Tabs>
+  </Step>
 
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
+  <Step title="Connect from Your MCP Host">
+    Configure your MCP host (like Claude Desktop) to use UMCP:
 
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
+    <CodeGroup>
 
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
+    ```json Claude Desktop Config
+    {
+      "mcpServers": {
+        "umcp": {
+          "command": "npx",
+          "args": [
+            "-y",
+            "github:grittyninja/umcp",
+            "serve",
+            "--transport",
+            "stdio"
+          ]
+        }
+      }
+    }
+    ```
 
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
+    ```json Custom Config Path
+    {
+      "mcpServers": {
+        "umcp": {
+          "command": "npx",
+          "args": [
+            "-y",
+            "github:grittyninja/umcp",
+            "serve",
+            "--transport",
+            "stdio",
+            "--config",
+            "/path/to/custom/umcp.jsonc"
+          ]
+        }
+      }
+    }
+    ```
 
+    ```json HTTP Transport
+    {
+      "mcpServers": {
+        "umcp": {
+          "url": "http://127.0.0.1:8787/mcp"
+        }
+      }
+    }
+    ```
+
+    </CodeGroup>
+
+    Restart your MCP host to apply changes.
+  </Step>
+</Steps>
+
+## Understanding Tool Namespacing
+
+UMCP exposes all tools with a predictable three-segment namespace:
+
+```
+{category}.{provider}.{tool}
+```
+
+<CardGroup cols={3}>
+  <Card title="Category" icon="folder">
+    The top-level grouping defined in your config (e.g., `web_search`, `project_mgmt`)
+  </Card>
+  <Card title="Provider" icon="server">
+    The specific MCP server within the category (e.g., `brave`, `tavily`, `linear`)
+  </Card>
+  <Card title="Tool" icon="wrench">
+    The actual tool name or alias (e.g., `search`, `add_task`)
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+### Example Tool Names
+
+Based on the configuration above:
+
+<CodeGroup>
+
+```plaintext Brave Search
+web_search.brave.search
+  ↓         ↓      ↓
+category  provider tool
+```
+
+```plaintext Tavily Search
+web_search.tavily.search
+  ↓         ↓       ↓
+category  provider  tool
+```
+
+```plaintext Linear Task (with alias)
+project_mgmt.linear.add_task
+     ↓         ↓       ↓
+ category  provider  alias (was: create_issue)
+```
+
+</CodeGroup>
+
+<Info>
+  This namespacing eliminates conflicts when multiple providers offer tools with similar names.
+</Info>
+
+## Configuration Deep Dive
+
+Let's break down the key configuration concepts:
+
+<AccordionGroup>
+  <Accordion title="Categories" icon="folder-tree">
+    Categories are top-level groupings for related providers:
+
+    ```jsonc
+    "categories": {
+      "web_search": { /* ... */ },
+      "project_mgmt": { /* ... */ },
+      "databases": { /* ... */ }
+    }
+    ```
+
+    Rules:
+    - Must match `[a-zA-Z0-9_-]+` (alphanumeric, underscores, hyphens)
+    - At least one category required
+    - Used as first segment in tool namespace
+  </Accordion>
+
+  <Accordion title="Providers" icon="server">
+    Providers are individual MCP servers within a category:
+
+    ```jsonc
+    "providers": [
+      {
+        "name": "brave",
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-brave-search"]
+      }
+    ]
+    ```
+
+    Required fields:
+    - `name`: Provider identifier (must match `[a-zA-Z0-9_-]+`)
+    - `transport`: `"stdio"`, `"sse"`, or `"streamable-http"`
+    - `command` + `args` (for stdio)
+    - `url` (for sse/streamable-http)
+  </Accordion>
+
+  <Accordion title="Environment Variables" icon="key">
+    Environment variables can be single values or arrays for round-robin rotation:
+
+    ```jsonc
+    "env": {
+      // Single value
+      "TAVILY_API_KEY": "single-key",
+      
+      // Round-robin rotation
+      "BRAVE_API_KEY": [
+        "key_1",
+        "key_2",
+        "key_3"
+      ]
+    }
+    ```
+
+    <Info>
+      Arrays rotate on each invocation. State is in-memory and resets on process restart.
+    </Info>
+  </Accordion>
+
+  <Accordion title="Tool Mappings" icon="wrench">
+    Control which tools are exposed and create aliases:
+
+    ```jsonc
+    "tools": [
+      {
+        "upstream": "create_issue",  // Original tool name
+        "alias": "add_task",          // Exposed as this
+        "enabled": true               // Optional, defaults to true
+      }
+    ]
+    ```
+
+    If `tools` is omitted, UMCP auto-discovers and exposes all upstream tools.
+
+    <Warning>
+      If an upstream tool name contains dots or other invalid characters, you must provide an explicit alias.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="Transport Types" icon="network-wired">
+    UMCP supports three upstream transport types:
+
+    **stdio** (default):
+    ```jsonc
+    {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "some-mcp-server"]
+    }
+    ```
+
+    **sse** (Server-Sent Events):
+    ```jsonc
+    {
+      "transport": "sse",
+      "url": "https://mcp.example.com/events"
+    }
+    ```
+
+    **streamable-http**:
+    ```jsonc
+    {
+      "transport": "streamable-http",
+      "url": "https://mcp.example.com/api"
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Common Patterns
+
+### Multiple Search Providers with Load Balancing
+
+```jsonc
+{
+  "categories": {
+    "web_search": {
+      "providers": [
+        {
+          "name": "brave",
+          "transport": "stdio",
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+          "env": {
+            "BRAVE_API_KEY": [
+              "team_key_1",
+              "team_key_2",
+              "team_key_3",
+              "team_key_4"
+            ]
+          }
+        },
+        {
+          "name": "tavily",
+          "transport": "stdio",
+          "command": "npx",
+          "args": ["-y", "tavily-mcp"],
+          "env": {
+            "TAVILY_API_KEY": [
+              "backup_key_1",
+              "backup_key_2"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+Now you have:
+- `web_search.brave.search` (rotates through 4 keys)
+- `web_search.tavily.search` (rotates through 2 keys)
+
+### Mixed Transport Providers
+
+```jsonc
+{
+  "categories": {
+    "tools": {
+      "providers": [
+        {
+          "name": "local_db",
+          "transport": "stdio",
+          "command": "node",
+          "args": ["/path/to/local/db-server.js"]
+        },
+        {
+          "name": "remote_api",
+          "transport": "streamable-http",
+          "url": "https://api.example.com/mcp"
+        },
+        {
+          "name": "sse_service",
+          "transport": "sse",
+          "url": "https://sse.example.com/stream"
+        }
+      ]
+    }
+  }
+}
+```
+
+### Tool Aliasing for Clean Names
+
+```jsonc
+{
+  "categories": {
+    "database": {
+      "providers": [
+        {
+          "name": "postgres",
+          "transport": "stdio",
+          "command": "mcp-postgres",
+          "tools": [
+            {
+              "upstream": "pg_query_v2",
+              "alias": "query"
+            },
+            {
+              "upstream": "pg_insert_v2",
+              "alias": "insert"
+            },
+            {
+              "upstream": "pg_update_v2",
+              "alias": "update"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+Exposes clean names:
+- `database.postgres.query`
+- `database.postgres.insert`
+- `database.postgres.update`
+
+## CLI Commands Reference
+
+<CodeGroup>
+
+```bash Serve (stdio)
+npx github:grittyninja/umcp serve --transport stdio
+```
+
+```bash Serve (HTTP)
+npx github:grittyninja/umcp serve \
+  --transport http \
+  --host 127.0.0.1 \
+  --port 8787 \
+  --path /mcp
+```
+
+```bash Validate Config
+npx github:grittyninja/umcp validate
+```
+
+```bash Dry Run
+npx github:grittyninja/umcp dry-run
+```
+
+```bash Custom Config Path
+npx github:grittyninja/umcp serve \
+  --config /path/to/custom.jsonc \
+  --transport stdio
+```
+
+```bash Help
+npx github:grittyninja/umcp --help
+```
+
+</CodeGroup>
+
+## Default Values
+
+<ResponseField name="--config" type="string" default="~/.config/umcp/umcp.jsonc">
+  Path to UMCP configuration file
+</ResponseField>
+
+<ResponseField name="--transport" type="string" default="stdio">
+  Transport type: `stdio` or `http`
+</ResponseField>
+
+<ResponseField name="--host" type="string" default="127.0.0.1">
+  HTTP server host (only for `--transport http`)
+</ResponseField>
+
+<ResponseField name="--port" type="number" default={8787}>
+  HTTP server port (only for `--transport http`)
+</ResponseField>
+
+<ResponseField name="--path" type="string" default="/mcp">
+  HTTP endpoint path (only for `--transport http`)
+</ResponseField>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Config validation errors" icon="triangle-exclamation">
+    Run validation to see detailed error messages:
+
+    ```bash
+    npx github:grittyninja/umcp validate
+    ```
+
+    Common issues:
+    - Invalid characters in category/provider names (must be `[a-zA-Z0-9_-]+`)
+    - Missing required fields (`name`, `transport`, `command`/`url`)
+    - Duplicate provider names within a category
+    - Empty arrays or objects
+  </Accordion>
+
+  <Accordion title="Provider connection failures" icon="plug">
+    Check the structured logs for connection errors:
+
+    ```json
+    {"level":"error","event":"provider.error","provider":"brave","message":"..."}
+    ```
+
+    Common causes:
+    - Invalid API keys in `env`
+    - Incorrect command or args for stdio providers
+    - Unreachable URL for HTTP/SSE providers
+    - Missing npm packages (try `npx -y` to auto-install)
+  </Accordion>
+
+  <Accordion title="npm cache permission errors" icon="lock">
+    UMCP automatically handles npm cache issues by using a fallback cache at `~/.cache/umcp/npm`.
+
+    To force the fallback cache for a specific provider:
+
+    ```jsonc
+    {
+      "name": "brave",
+      "env": {
+        "NPM_CONFIG_CACHE": "/Users/you/.cache/umcp/npm",
+        "BRAVE_API_KEY": "..."
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Tools not appearing" icon="eye-slash">
+    Use dry-run to see what tools would be discovered:
+
+    ```bash
+    npx github:grittyninja/umcp dry-run
+    ```
+
+    If tools are missing:
+    - Check that the provider is connecting successfully
+    - Verify `tools` mapping if you're using explicit tool lists
+    - Ensure `enabled: true` for tool mappings (or omit the field)
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration Guide" icon="gear" href="/configuration/overview">
+    Deep dive into all configuration options
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/cli/overview">
+    Complete command-line interface documentation
+  </Card>
+  <Card title="Examples" icon="code" href="/examples/web-search">
+    Real-world configuration examples
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/troubleshooting/common-issues">
+    Common issues and solutions
+  </Card>
+</CardGroup>

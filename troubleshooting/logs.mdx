@@ -1,0 +1,639 @@
+---
+title: Logs & Debugging
+description: Understanding UMCP's structured logging format and debug information
+---
+
+## Log Format
+
+UMCP emits all logs as JSON lines to `stderr`. Each log entry has the following structure:
+
+```json
+{
+  "ts": "2024-03-15T10:30:45.123Z",
+  "level": "info",
+  "event": "provider.connected",
+  "msg": "Connected to upstream provider",
+  "context": {
+    "providerId": "web_search.brave",
+    "transport": "stdio"
+  }
+}
+```
+
+### Log Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `ts` | string | ISO 8601 timestamp |
+| `level` | string | Log level: `debug`, `info`, `warn`, `error` |
+| `event` | string | Event type (see below) |
+| `msg` | string | Human-readable message |
+| `context` | object | Additional structured data (optional) |
+
+### Log Levels
+
+UMCP supports four log levels:
+
+- **debug** (10): Detailed diagnostic information
+- **info** (20): General informational messages (default)
+- **warn** (30): Warning messages for non-critical issues
+- **error** (40): Error messages for failures
+
+Logs are filtered by level weight. For example, if the log level is set to `info`, `debug` messages are suppressed.
+
+## Log Events
+
+UMCP emits the following event types:
+
+### Configuration Events
+
+<AccordionGroup>
+
+<Accordion title="config.created">
+
+Emitted when UMCP auto-creates the default config file on first run.
+
+**Level:** `info`
+
+**Context:**
+```json
+{
+  "configPath": "/Users/yan/.config/umcp/umcp.jsonc"
+}
+```
+
+**Example:**
+```json
+{
+  "ts": "2024-03-15T10:30:45.123Z",
+  "level": "info",
+  "event": "config.created",
+  "msg": "Created default umcp JSONC config file",
+  "context": {
+    "configPath": "/Users/yan/.config/umcp/umcp.jsonc"
+  }
+}
+```
+
+</Accordion>
+
+<Accordion title="config.loaded">
+
+Emitted when configuration is successfully loaded and validated.
+
+**Level:** `info`
+
+**Context:**
+```json
+{
+  "configPath": "/Users/yan/.config/umcp/umcp.jsonc",
+  "categories": 2,
+  "created": false
+}
+```
+
+**Example:**
+```json
+{
+  "ts": "2024-03-15T10:30:45.234Z",
+  "level": "info",
+  "event": "config.loaded",
+  "msg": "Loaded umcp config",
+  "context": {
+    "configPath": "/Users/yan/.config/umcp/umcp.jsonc",
+    "categories": 2,
+    "created": false
+  }
+}
+```
+
+</Accordion>
+
+<Accordion title="config.invalid">
+
+Emitted when configuration validation fails.
+
+**Level:** `error`
+
+**Context:**
+```json
+{
+  "configPath": "/Users/yan/.config/umcp/umcp.jsonc",
+  "details": "categories.web_search.providers[0].command: provider.command is required when transport is stdio"
+}
+```
+
+**Example:**
+```json
+{
+  "ts": "2024-03-15T10:30:45.345Z",
+  "level": "error",
+  "event": "config.invalid",
+  "msg": "Config validation failed",
+  "context": {
+    "configPath": "/Users/yan/.config/umcp/umcp.jsonc",
+    "details": "categories.web_search.providers[0].command: provider.command is required when transport is stdio"
+  }
+}
+```
+
+</Accordion>
+
+</AccordionGroup>
+
+### Provider Events
+
+<AccordionGroup>
+
+<Accordion title="provider.connected">
+
+Emitted when UMCP successfully connects to an upstream provider.
+
+**Level:** `info`
+
+**Context:**
+```json
+{
+  "providerId": "web_search.brave",
+  "transport": "stdio"
+}
+```
+
+**Example:**
+```json
+{
+  "ts": "2024-03-15T10:30:46.123Z",
+  "level": "info",
+  "event": "provider.connected",
+  "msg": "Connected to upstream provider",
+  "context": {
+    "providerId": "web_search.brave",
+    "transport": "stdio"
+  }
+}
+```
+
+</Accordion>
+
+<Accordion title="provider.disconnected">
+
+Emitted when UMCP disconnects from an upstream provider. This can happen for:
+- Ephemeral clients (created per-request for round-robin env rotation)
+- Persistent clients (on shutdown)
+
+**Level:** `info`
+
+**Context:**
+```json
+{
+  "providerId": "web_search.brave"
+}
+```
+
+**Examples:**
+
+Ephemeral client:
+```json
+{
+  "ts": "2024-03-15T10:30:47.123Z",
+  "level": "info",
+  "event": "provider.disconnected",
+  "msg": "Disconnected ephemeral upstream client",
+  "context": {
+    "providerId": "web_search.brave"
+  }
+}
+```
+
+Persistent client:
+```json
+{
+  "ts": "2024-03-15T10:35:00.456Z",
+  "level": "info",
+  "event": "provider.disconnected",
+  "msg": "Closed persistent upstream client",
+  "context": {
+    "providerId": "web_search.brave"
+  }
+}
+```
+
+</Accordion>
+
+</AccordionGroup>
+
+### Tool Events
+
+<AccordionGroup>
+
+<Accordion title="tool.discovered">
+
+Emitted when UMCP discovers tools from an upstream provider.
+
+**Level:** `info`
+
+**Context:**
+```json
+{
+  "providerId": "web_search.brave",
+  "count": 3
+}
+```
+
+**Example:**
+```json
+{
+  "ts": "2024-03-15T10:30:46.234Z",
+  "level": "info",
+  "event": "tool.discovered",
+  "msg": "Discovered upstream tools",
+  "context": {
+    "providerId": "web_search.brave",
+    "count": 3
+  }
+}
+```
+
+</Accordion>
+
+<Accordion title="tool.registered">
+
+Emitted when UMCP registers a unified tool with the MCP server.
+
+**Level:** `info`
+
+**Context:**
+```json
+{
+  "finalName": "web_search.brave.search",
+  "providerId": "web_search.brave",
+  "upstreamName": "search"
+}
+```
+
+**Example:**
+```json
+{
+  "ts": "2024-03-15T10:30:46.345Z",
+  "level": "info",
+  "event": "tool.registered",
+  "msg": "Registered unified tool",
+  "context": {
+    "finalName": "web_search.brave.search",
+    "providerId": "web_search.brave",
+    "upstreamName": "search"
+  }
+}
+```
+
+</Accordion>
+
+<Accordion title="tool.called">
+
+Emitted when a tool is invoked and forwarded to the upstream provider.
+
+**Level:** `info`
+
+**Context:**
+```json
+{
+  "finalName": "web_search.brave.search",
+  "providerId": "web_search.brave",
+  "upstreamName": "search"
+}
+```
+
+**Example:**
+```json
+{
+  "ts": "2024-03-15T10:31:15.123Z",
+  "level": "info",
+  "event": "tool.called",
+  "msg": "Forwarding tool call to upstream provider",
+  "context": {
+    "finalName": "web_search.brave.search",
+    "providerId": "web_search.brave",
+    "upstreamName": "search"
+  }
+}
+```
+
+</Accordion>
+
+<Accordion title="tool.schema_fallback">
+
+Emitted when UMCP cannot convert a tool's JSON Schema to Zod and uses a permissive schema.
+
+**Level:** `warn`
+
+**Context:**
+```json
+{
+  "finalName": "web_search.brave.search",
+  "upstreamName": "search"
+}
+```
+
+**Example:**
+```json
+{
+  "ts": "2024-03-15T10:30:46.456Z",
+  "level": "warn",
+  "event": "tool.schema_fallback",
+  "msg": "Using permissive schema for tool",
+  "context": {
+    "finalName": "web_search.brave.search",
+    "upstreamName": "search"
+  }
+}
+```
+
+</Accordion>
+
+</AccordionGroup>
+
+### Environment Events
+
+<AccordionGroup>
+
+<Accordion title="env.rotated">
+
+Emitted when an environment variable is rotated using round-robin for a provider.
+
+**Level:** `info`
+
+**Context:**
+```json
+{
+  "providerId": "web_search.brave",
+  "key": "BRAVE_API_KEY",
+  "index": 1,
+  "total": 3,
+  "masked": "AB***YZ"
+}
+```
+
+**Example:**
+```json
+{
+  "ts": "2024-03-15T10:31:15.234Z",
+  "level": "info",
+  "event": "env.rotated",
+  "msg": "Rotated env key using round-robin",
+  "context": {
+    "providerId": "web_search.brave",
+    "key": "BRAVE_API_KEY",
+    "index": 1,
+    "total": 3,
+    "masked": "AB***YZ"
+  }
+}
+```
+
+</Accordion>
+
+</AccordionGroup>
+
+### Server Events
+
+<AccordionGroup>
+
+<Accordion title="server.started">
+
+Emitted when the UMCP server starts successfully.
+
+**Level:** `info`
+
+**Context (stdio):**
+```json
+{}
+```
+
+**Context (http):**
+```json
+{
+  "host": "127.0.0.1",
+  "port": 8787,
+  "path": "/mcp"
+}
+```
+
+**Examples:**
+
+Stdio transport:
+```json
+{
+  "ts": "2024-03-15T10:30:46.567Z",
+  "level": "info",
+  "event": "server.started",
+  "msg": "umcp started with stdio transport"
+}
+```
+
+HTTP transport:
+```json
+{
+  "ts": "2024-03-15T10:30:46.567Z",
+  "level": "info",
+  "event": "server.started",
+  "msg": "umcp started with streamable-http transport",
+  "context": {
+    "host": "127.0.0.1",
+    "port": 8787,
+    "path": "/mcp"
+  }
+}
+```
+
+</Accordion>
+
+<Accordion title="server.http_error">
+
+Emitted when an HTTP request fails.
+
+**Level:** `error`
+
+**Context:**
+```json
+{
+  "message": "Connection timeout"
+}
+```
+
+**Example:**
+```json
+{
+  "ts": "2024-03-15T10:35:20.123Z",
+  "level": "error",
+  "event": "server.http_error",
+  "msg": "HTTP transport request failed",
+  "context": {
+    "message": "Connection timeout"
+  }
+}
+```
+
+</Accordion>
+
+<Accordion title="shutdown.signal">
+
+Emitted when a shutdown signal (SIGINT, SIGTERM) is received.
+
+**Level:** `info`
+
+**Context:**
+```json
+{
+  "reason": "SIGTERM"
+}
+```
+
+**Example:**
+```json
+{
+  "ts": "2024-03-15T10:40:00.123Z",
+  "level": "info",
+  "event": "shutdown.signal",
+  "msg": "Shutdown signal received",
+  "context": {
+    "reason": "SIGTERM"
+  }
+}
+```
+
+</Accordion>
+
+</AccordionGroup>
+
+### Dry-Run Events
+
+<AccordionGroup>
+
+<Accordion title="dry_run.complete">
+
+Emitted when dry-run mode completes successfully.
+
+**Level:** `info`
+
+**Context:**
+```json
+{
+  "count": 12
+}
+```
+
+**Example:**
+```json
+{
+  "ts": "2024-03-15T10:30:50.123Z",
+  "level": "info",
+  "event": "dry_run.complete",
+  "msg": "Dry-run completed",
+  "context": {
+    "count": 12
+  }
+}
+```
+
+</Accordion>
+
+</AccordionGroup>
+
+### CLI Events
+
+<AccordionGroup>
+
+<Accordion title="cli.failed">
+
+Emitted when a CLI command fails.
+
+**Level:** `error`
+
+**Context:**
+```json
+{
+  "message": "Config validation failed for /path/to/umcp.jsonc: categories.web_search.providers[0].command: provider.command is required when transport is stdio"
+}
+```
+
+**Example:**
+```json
+{
+  "ts": "2024-03-15T10:30:45.789Z",
+  "level": "error",
+  "event": "cli.failed",
+  "msg": "umcp command failed",
+  "context": {
+    "message": "Config validation failed"
+  }
+}
+```
+
+</Accordion>
+
+</AccordionGroup>
+
+## Debugging Tips
+
+### Capture Logs to File
+
+Since logs are written to `stderr`, you can capture them separately:
+
+```bash
+umcp serve 2> umcp.log
+```
+
+### Filter by Event Type
+
+Use `jq` to filter specific events:
+
+```bash
+# Show only error events
+cat umcp.log | jq 'select(.level == "error")'
+
+# Show provider connection events
+cat umcp.log | jq 'select(.event | startswith("provider."))'
+
+# Show tool-related events
+cat umcp.log | jq 'select(.event | startswith("tool."))'
+```
+
+### Pretty-Print Logs
+
+Use `jq` for human-readable output:
+
+```bash
+cat umcp.log | jq '.'
+```
+
+### Monitor Logs in Real-Time
+
+Tail and pretty-print logs:
+
+```bash
+tail -f umcp.log | jq '.'
+```
+
+### Extract Context Information
+
+Get specific context fields:
+
+```bash
+# List all provider IDs
+cat umcp.log | jq -r 'select(.context.providerId) | .context.providerId' | sort -u
+
+# Count tools by provider
+cat umcp.log | jq -r 'select(.event == "tool.registered") | .context.providerId' | sort | uniq -c
+
+# Show all final tool names
+cat umcp.log | jq -r 'select(.event == "tool.registered") | .context.finalName'
+```
+
+## Secret Masking
+
+When logging environment variable values (like in `env.rotated`), UMCP masks secrets:
+
+- If the value is ≤ 4 characters: `***`
+- If the value is > 4 characters: `XX***YY` (first 2 and last 2 chars shown)
+
+This ensures sensitive API keys are not exposed in logs.

@@ -1,0 +1,384 @@
+---
+title: Tools
+description: Map and control which tools are exposed from MCP providers
+---
+
+Tool mappings control which tools from an MCP provider are exposed through UMCP. You can rename tools using aliases, disable specific tools, or let UMCP auto-discover all available tools.
+
+## Overview
+
+The `tools` array in a provider configuration defines how upstream tools are mapped:
+
+```jsonc
+{
+  "name": "brave",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+  "tools": [
+    {
+      "upstream": "search",
+      "alias": "search",
+      "enabled": true
+    }
+  ]
+}
+```
+
+## Schema Reference
+
+<ParamField path="upstream" type="string" required>
+  The original tool name from the upstream MCP provider
+  
+  This must exactly match the tool name as defined by the provider.
+  
+  **Example:** `"search"`
+</ParamField>
+
+<ParamField path="alias" type="string" optional>
+  Alternative name for the tool in UMCP's namespace
+  
+  **Pattern:** `[a-zA-Z0-9_-]+`
+  
+  If omitted, the original upstream name is used.
+  
+  **Examples:**
+  - `"search"` (keep original name)
+  - `"web_search"` (rename for clarity)
+  - `"add_task"` (rename `create_issue` to `add_task`)
+  
+  **Not allowed:**
+  - ❌ `"my.tool"` (contains dot)
+  - ❌ `"my tool"` (contains space)
+</ParamField>
+
+<ParamField path="enabled" type="boolean" default="true">
+  Whether to expose this tool through UMCP
+  
+  **Default:** `true`
+  
+  Set to `false` to disable a specific tool without removing it from the configuration.
+</ParamField>
+
+## Auto-Discovery
+
+If you omit the `tools` field entirely, UMCP automatically discovers and exposes all tools from the provider:
+
+```jsonc
+{
+  "name": "tavily",
+  "command": "npx",
+  "args": ["-y", "tavily-mcp"],
+  "env": {
+    "TAVILY_API_KEY": "your-api-key"
+  }
+  // tools omitted -> auto-discover all tools
+}
+```
+
+<Tip>
+**When to use auto-discovery:**
+- During development to explore available tools
+- When you want to expose all tools from a provider
+- For simple providers with few tools
+
+**When to use explicit mappings:**
+- In production for better control
+- When you need to rename tools
+- When you want to disable specific tools
+- For providers with many tools where you only need a few
+</Tip>
+
+## Explicit Tool Mappings
+
+If you provide the `tools` array, only the explicitly mapped tools are exposed:
+
+```jsonc
+{
+  "name": "brave",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+  "tools": [
+    {
+      "upstream": "search",
+      "alias": "search",
+      "enabled": true
+    }
+  ]
+}
+```
+
+In this example, only the `search` tool is exposed. Any other tools from the brave provider are hidden.
+
+## Renaming Tools with Aliases
+
+Use the `alias` field to rename tools for consistency or clarity:
+
+```jsonc
+{
+  "name": "linear",
+  "transport": "streamable-http",
+  "url": "https://linear-mcp.example.com/mcp",
+  "tools": [
+    {
+      "upstream": "create_issue",
+      "alias": "add_task"
+    },
+    {
+      "upstream": "list_issues",
+      "alias": "get_tasks"
+    },
+    {
+      "upstream": "update_issue",
+      "alias": "update_task"
+    }
+  ]
+}
+```
+
+With this configuration:
+- `create_issue` is exposed as `project_mgmt.linear.add_task`
+- `list_issues` is exposed as `project_mgmt.linear.get_tasks`
+- `update_issue` is exposed as `project_mgmt.linear.update_task`
+
+## Disabling Tools
+
+Set `enabled: false` to disable specific tools without removing them from the configuration:
+
+```jsonc
+{
+  "name": "github",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-github"],
+  "tools": [
+    {
+      "upstream": "search_repositories",
+      "enabled": true
+    },
+    {
+      "upstream": "create_issue",
+      "enabled": true
+    },
+    {
+      "upstream": "delete_repository",
+      "enabled": false  // Disable dangerous operation
+    }
+  ]
+}
+```
+
+<Warning>
+Disabled tools are not exposed through UMCP. This is useful for hiding dangerous or unwanted operations.
+</Warning>
+
+## Tool Namespace
+
+Tools are exposed in a three-part namespace:
+
+```
+{category}.{provider}.{tool}
+```
+
+### Example
+
+Given this configuration:
+
+```jsonc
+{
+  "categories": {
+    "web_search": {
+      "providers": [
+        {
+          "name": "brave",
+          "tools": [
+            { "upstream": "search", "alias": "web_search" }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+The tool is exposed as: `web_search.brave.web_search`
+
+### Without Alias
+
+If you omit the `alias` field, the upstream name is used:
+
+```jsonc
+{
+  "upstream": "search"
+}
+```
+
+Exposed as: `web_search.brave.search`
+
+## Validation Rules
+
+UMCP enforces these validation rules for tool mappings:
+
+1. **Upstream required:** Every tool mapping must have an `upstream` field
+2. **Valid alias:** If provided, `alias` must match `[a-zA-Z0-9_-]+`
+3. **Enabled default:** The `enabled` field defaults to `true` if omitted
+4. **Strict mode:** Unknown fields will cause validation errors
+
+## Examples
+
+### Keep Original Names
+
+```jsonc
+{
+  "tools": [
+    { "upstream": "search" },
+    { "upstream": "summarize" },
+    { "upstream": "translate" }
+  ]
+}
+```
+
+### Rename All Tools
+
+```jsonc
+{
+  "tools": [
+    { "upstream": "search", "alias": "web_search" },
+    { "upstream": "summarize", "alias": "summarize_text" },
+    { "upstream": "translate", "alias": "translate_text" }
+  ]
+}
+```
+
+### Mix of Enabled and Disabled
+
+```jsonc
+{
+  "tools": [
+    { "upstream": "read_file", "enabled": true },
+    { "upstream": "write_file", "enabled": true },
+    { "upstream": "delete_file", "enabled": false },
+    { "upstream": "execute_command", "enabled": false }
+  ]
+}
+```
+
+### Rename and Disable
+
+```jsonc
+{
+  "tools": [
+    { 
+      "upstream": "create_issue",
+      "alias": "add_task",
+      "enabled": true
+    },
+    {
+      "upstream": "delete_issue",
+      "alias": "remove_task",
+      "enabled": false
+    }
+  ]
+}
+```
+
+## Common Patterns
+
+### Expose Only Safe Tools
+
+```jsonc
+{
+  "name": "filesystem",
+  "command": "node",
+  "args": ["/path/to/fs-server.js"],
+  "tools": [
+    { "upstream": "read_file", "enabled": true },
+    { "upstream": "list_directory", "enabled": true },
+    { "upstream": "write_file", "enabled": false },
+    { "upstream": "delete_file", "enabled": false }
+  ]
+}
+```
+
+### Standardize Naming Across Providers
+
+```jsonc
+{
+  "categories": {
+    "search": {
+      "providers": [
+        {
+          "name": "brave",
+          "tools": [
+            { "upstream": "search", "alias": "web_search" }
+          ]
+        },
+        {
+          "name": "tavily",
+          "tools": [
+            { "upstream": "search_web", "alias": "web_search" }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+Both providers expose a tool with the same alias:
+- `search.brave.web_search`
+- `search.tavily.web_search`
+
+### Selective Tool Exposure
+
+```jsonc
+{
+  "name": "github",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-github"],
+  "tools": [
+    // Only expose read operations
+    { "upstream": "search_repositories" },
+    { "upstream": "get_issue" },
+    { "upstream": "list_issues" },
+    { "upstream": "get_pull_request" }
+    // All write operations hidden
+  ]
+}
+```
+
+## Error Messages
+
+### Missing upstream
+
+```
+Config validation failed: tools[].upstream is required
+```
+
+**Solution:** Add the `upstream` field to every tool mapping.
+
+### Invalid alias
+
+```
+Config validation failed: tools[].alias must match [a-zA-Z0-9_-]+
+```
+
+**Solution:** Use only allowed characters in the alias (no dots or spaces).
+
+## Best Practices
+
+1. **Use auto-discovery during development** to explore what tools a provider offers
+2. **Switch to explicit mappings in production** for better control and security
+3. **Use descriptive aliases** that make the tool's purpose clear
+4. **Disable dangerous tools** rather than removing them from the configuration
+5. **Standardize naming** across similar providers for consistency
+6. **Document disabled tools** with comments explaining why they're disabled
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Environment Variables" icon="key" href="/configuration/environment-variables">
+    Configure secrets and API keys for providers
+  </Card>
+  <Card title="Provider Configuration" icon="server" href="/configuration/providers">
+    Learn more about provider settings
+  </Card>
+</CardGroup>

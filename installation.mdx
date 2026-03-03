@@ -1,0 +1,331 @@
+---
+title: Installation
+description: Install UMCP via npm, npx, or directly from GitHub
+---
+
+## Prerequisites
+
+<Card title="Node.js 20+" icon="node-js">
+  UMCP requires Node.js version 20 or higher. Check your version:
+  
+  ```bash
+  node --version
+  ```
+</Card>
+
+## Installation Methods
+
+Choose the installation method that best fits your workflow:
+
+<Tabs>
+  <Tab title="GitHub (Recommended)">
+    Install directly from the GitHub repository to get the latest version:
+
+    ```bash
+    npm install github:grittyninja/umcp
+    ```
+
+    This method:
+    - Installs the latest code from the `main` branch
+    - Bypasses npm registry delays
+    - Perfect for early adopters and contributors
+
+    After installation, the `umcp` command will be available in your project's `node_modules/.bin` directory.
+
+    <Note>
+      If you install globally with `npm install -g github:grittyninja/umcp`, the `umcp` command will be available system-wide.
+    </Note>
+  </Tab>
+
+  <Tab title="npx (No Install)">
+    Run UMCP on-demand without installing:
+
+    ```bash
+    npx github:grittyninja/umcp --help
+    ```
+
+    This is ideal for:
+    - Quick testing and evaluation
+    - CI/CD environments
+    - One-off executions
+
+    Example usage:
+
+    <CodeGroup>
+
+    ```bash Serve
+    npx github:grittyninja/umcp serve --transport stdio
+    ```
+
+    ```bash Validate Config
+    npx github:grittyninja/umcp validate
+    ```
+
+    ```bash Dry Run
+    npx github:grittyninja/umcp dry-run
+    ```
+
+    </CodeGroup>
+
+    <Warning>
+      npx will download and cache the package on first run. Subsequent runs will be faster.
+    </Warning>
+  </Tab>
+
+  <Tab title="npm (Local Dev)">
+    For local development from source:
+
+    <Steps>
+      <Step title="Clone the repository">
+        ```bash
+        git clone https://github.com/grittyninja/umcp.git
+        cd umcp
+        ```
+      </Step>
+
+      <Step title="Install dependencies">
+        ```bash
+        npm install
+        ```
+      </Step>
+
+      <Step title="Build the project">
+        ```bash
+        npm run build
+        ```
+
+        This compiles TypeScript source files from `src/` to `build/`.
+      </Step>
+
+      <Step title="Run tests (optional)">
+        ```bash
+        npm test
+        ```
+      </Step>
+
+      <Step title="Run UMCP">
+        Use npm scripts or the built CLI:
+
+        ```bash
+        npm start serve --transport stdio
+        # or
+        node build/index.js serve --transport stdio
+        ```
+      </Step>
+    </Steps>
+
+    <Note>
+      The `prepare` script automatically runs `npm run build` after installation, so the CLI is always ready to use.
+    </Note>
+  </Tab>
+</Tabs>
+
+## Verify Installation
+
+Confirm UMCP is installed correctly:
+
+<CodeGroup>
+
+```bash Version Check
+umcp --help
+```
+
+```bash Expected Output
+umcp - Unified MCP Aggregator
+
+Usage:
+  umcp serve [--transport stdio|http] [--host 127.0.0.1] [--port 8787] [--path /mcp] [--config /path/to/umcp.jsonc]
+  umcp validate [--config /path/to/umcp.jsonc]
+  umcp dry-run [--config /path/to/umcp.jsonc]
+
+Compatibility flags:
+  umcp --validate [--config /path/to/umcp.jsonc]
+  umcp --dry-run [--config /path/to/umcp.jsonc]
+```
+
+</CodeGroup>
+
+## Configuration File
+
+UMCP uses a single JSONC configuration file:
+
+<ResponseField name="Default Path" type="string">
+  `~/.config/umcp/umcp.jsonc`
+</ResponseField>
+
+<Info>
+  On first run, UMCP automatically creates this file with detailed placeholder examples if it doesn't exist.
+</Info>
+
+### Schema Validation
+
+UMCP provides a JSON schema for editor validation and autocomplete:
+
+**Hosted Schema URL:**
+```
+https://raw.githubusercontent.com/grittyninja/umcp/main/umcp.config.schema.json
+```
+
+**Usage in config file:**
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/grittyninja/umcp/main/umcp.config.schema.json",
+  "categories": {
+    // Your configuration here
+  }
+}
+```
+
+<Tip>
+  Most modern editors (VS Code, IntelliJ, etc.) will automatically provide autocomplete and validation when the `$schema` field is present.
+</Tip>
+
+### Config File Format
+
+<Warning>
+  Only `.jsonc` files are supported. UMCP will reject `.json`, `.json5`, or other formats.
+</Warning>
+
+JSONC (JSON with Comments) allows:
+- Single-line comments: `// comment`
+- Multi-line comments: `/* comment */`
+- Trailing commas in objects and arrays
+
+Example:
+```jsonc
+{
+  // This is a comment
+  "categories": {
+    "web_search": {
+      "providers": [
+        {
+          "name": "brave",
+          "transport": "stdio", // Comment here too
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+        } // Trailing comma allowed
+      ]
+    }
+  }
+}
+```
+
+## Package Structure
+
+When installed, UMCP includes these files:
+
+<CodeGroup>
+
+```plaintext Directory Structure
+umcp/
+├── build/              # Compiled JavaScript
+│   ├── index.js       # CLI entry point
+│   ├── cli.js
+│   ├── config.js
+│   ├── serve.js
+│   └── ...
+├── README.md
+├── umcp.config.schema.json
+└── examples/
+    └── umcp.config.jsonc
+```
+
+```json package.json
+{
+  "name": "umcp",
+  "version": "0.1.0",
+  "description": "Unified MCP aggregator server",
+  "type": "module",
+  "bin": {
+    "umcp": "./build/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
+```
+
+</CodeGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="EACCES: permission denied">
+    If you encounter npm permission errors, use one of these solutions:
+
+    **Option 1: Use npx (recommended)**
+    ```bash
+    npx github:grittyninja/umcp serve
+    ```
+
+    **Option 2: Fix npm permissions**
+    ```bash
+    mkdir -p ~/.npm-global
+    npm config set prefix '~/.npm-global'
+    echo 'export PATH=~/.npm-global/bin:$PATH' >> ~/.bashrc
+    source ~/.bashrc
+    ```
+
+    **Option 3: Use UMCP's fallback cache**
+    
+    UMCP automatically applies a fallback npm cache at `~/.cache/umcp/npm` when it detects permission issues.
+  </Accordion>
+
+  <Accordion title="node: command not found">
+    Node.js is not installed or not in your PATH.
+
+    **Install Node.js:**
+    - **macOS**: `brew install node`
+    - **Ubuntu/Debian**: `sudo apt install nodejs npm`
+    - **Windows**: Download from [nodejs.org](https://nodejs.org)
+
+    **Verify installation:**
+    ```bash
+    node --version
+    npm --version
+    ```
+  </Accordion>
+
+  <Accordion title="Module not found errors after installation">
+    Rebuild the project:
+
+    ```bash
+    cd umcp
+    rm -rf node_modules build
+    npm install
+    npm run build
+    ```
+  </Accordion>
+
+  <Accordion title="Config file not found">
+    UMCP creates the config file automatically on first run. To trigger creation:
+
+    ```bash
+    umcp validate
+    ```
+
+    This will create `~/.config/umcp/umcp.jsonc` with example configuration.
+
+    You can also specify a custom path:
+    ```bash
+    umcp validate --config /path/to/my-config.jsonc
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start Guide" icon="rocket" href="/quickstart">
+    Get UMCP running in under 5 minutes
+  </Card>
+  <Card title="Configuration" icon="gear" href="/configuration/overview">
+    Learn how to configure providers and tools
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/cli/overview">
+    Explore all CLI commands and options
+  </Card>
+  <Card title="Examples" icon="code" href="/examples/web-search">
+    See real-world configuration examples
+  </Card>
+</CardGroup>

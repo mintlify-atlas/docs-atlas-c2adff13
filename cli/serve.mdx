@@ -1,0 +1,331 @@
+---
+title: umcp serve
+description: Start the UMCP aggregation server
+---
+
+The `serve` command starts the UMCP server, which aggregates multiple upstream MCP servers and exposes their tools through a unified interface.
+
+## Usage
+
+```bash
+umcp serve [OPTIONS]
+```
+
+Since `serve` is the default command, you can omit it:
+
+```bash
+# These are equivalent
+umcp
+umcp serve
+```
+
+## Transport Options
+
+### stdio Transport (Default)
+
+```bash
+umcp serve --transport stdio
+```
+
+Uses standard input/output for MCP communication. This is the default and most common transport for MCP clients like Claude Desktop.
+
+**Example Claude Desktop configuration:**
+
+```json
+{
+  "mcpServers": {
+    "umcp": {
+      "command": "npx",
+      "args": ["-y", "github:grittyninja/umcp", "serve", "--transport", "stdio"]
+    }
+  }
+}
+```
+
+### HTTP Transport
+
+```bash
+umcp serve --transport http --host 127.0.0.1 --port 8787 --path /mcp
+```
+
+Starts an HTTP server using the Streamable HTTP transport protocol. Useful for remote connections or debugging.
+
+**Server output:**
+
+```json
+{"level":"info","event":"server.started","message":"umcp started with streamable-http transport","data":{"host":"127.0.0.1","port":8787,"endpointPath":"/mcp"}}
+```
+
+**Example Claude Desktop configuration:**
+
+```json
+{
+  "mcpServers": {
+    "umcp": {
+      "url": "http://127.0.0.1:8787/mcp"
+    }
+  }
+}
+```
+
+## Flags
+
+<ParamField path="--transport" type="string" default="stdio">
+  The transport protocol to use for the MCP server.
+  
+  **Options:**
+  - `stdio` - Standard input/output (default)
+  - `http` - Streamable HTTP server
+  
+  **Validation:**
+  - If the value is not `stdio` or `http`, UMCP exits with an error:
+    ```
+    Error: Invalid --transport value 'invalid'. Expected 'stdio' or 'http'.
+    ```
+  
+  **Example:**
+  ```bash
+  umcp serve --transport http
+  ```
+</ParamField>
+
+<ParamField path="--host" type="string" default="127.0.0.1">
+  The host address to bind the HTTP server to. Only used when `--transport http`.
+  
+  **Examples:**
+  ```bash
+  # Listen on localhost only (default)
+  umcp serve --transport http --host 127.0.0.1
+  
+  # Listen on all interfaces
+  umcp serve --transport http --host 0.0.0.0
+  ```
+  
+  <Note>
+    This flag is ignored when using `--transport stdio`.
+  </Note>
+</ParamField>
+
+<ParamField path="--port" type="number" default="8787">
+  The port number to bind the HTTP server to. Only used when `--transport http`.
+  
+  **Validation:**
+  - Must be a positive integer
+  - If invalid, UMCP exits with an error:
+    ```
+    Error: Invalid value for --port: abc
+    ```
+  
+  **Examples:**
+  ```bash
+  umcp serve --transport http --port 3000
+  umcp serve --transport http --port=9090
+  ```
+  
+  <Note>
+    This flag is ignored when using `--transport stdio`.
+  </Note>
+</ParamField>
+
+<ParamField path="--path" type="string" default="/mcp">
+  The endpoint path for the HTTP server. Only used when `--transport http`.
+  
+  **Path normalization:**
+  - Paths without a leading `/` are automatically prefixed with `/`
+  - Example: `mcp` becomes `/mcp`
+  
+  **Examples:**
+  ```bash
+  umcp serve --transport http --path /api/mcp
+  umcp serve --transport http --path mcp  # becomes /mcp
+  ```
+  
+  <Note>
+    This flag is ignored when using `--transport stdio`.
+  </Note>
+</ParamField>
+
+<ParamField path="--config" type="string" default="~/.config/umcp/umcp.jsonc">
+  Path to the UMCP configuration file.
+  
+  **Examples:**
+  ```bash
+  umcp serve --config /path/to/custom.jsonc
+  umcp serve --config=~/.config/umcp/production.jsonc
+  ```
+  
+  <Info>
+    On first run, if the default config file doesn't exist, UMCP auto-creates it with detailed placeholders.
+  </Info>
+</ParamField>
+
+## Examples
+
+### Default stdio Server
+
+```bash
+umcp serve
+```
+
+Starts with:
+- Transport: `stdio`
+- Config: `~/.config/umcp/umcp.jsonc`
+
+**Log output:**
+
+```json
+{"level":"info","event":"server.started","message":"umcp started with stdio transport"}
+```
+
+### HTTP Server with Custom Port
+
+```bash
+umcp serve --transport http --port 3000
+```
+
+Starts with:
+- Transport: `http`
+- Host: `127.0.0.1` (default)
+- Port: `3000`
+- Path: `/mcp` (default)
+
+### Full HTTP Configuration
+
+```bash
+umcp serve --transport http --host 0.0.0.0 --port 9090 --path /api/mcp
+```
+
+### Custom Config File
+
+```bash
+umcp serve --config ~/projects/my-app/umcp.jsonc
+```
+
+### Combined Options
+
+```bash
+umcp serve --transport http --port 8000 --path /mcp --config /etc/umcp/prod.jsonc
+```
+
+## HTTP Endpoint Behavior
+
+When running with `--transport http`, the server:
+
+1. **Accepts requests** at the configured endpoint path (default `/mcp`)
+2. **Returns 404** for other paths:
+   ```bash
+   curl http://127.0.0.1:8787/other
+   # Response: Not Found (404)
+   ```
+3. **Supports methods**: `POST`, `GET`, `DELETE`
+4. **Returns 405** for unsupported methods:
+   ```bash
+   curl -X PUT http://127.0.0.1:8787/mcp
+   # Response: Method Not Allowed (405)
+   ```
+5. **Request body limit**: 1 MB maximum
+6. **Error responses** are JSON:
+   ```json
+   {"error":"Request body too large"}
+   ```
+
+## Shutdown Signals
+
+The server gracefully handles shutdown signals:
+
+- **stdio transport**: `SIGINT`, `SIGTERM`, stdin close
+- **http transport**: `SIGINT`, `SIGTERM`
+
+When shutdown begins:
+
+```json
+{"level":"info","event":"shutdown.signal","message":"Shutdown signal received","data":{"reason":"SIGINT"}}
+```
+
+The server will:
+1. Close all upstream provider connections
+2. Close the MCP server
+3. (HTTP only) Close the HTTP server
+4. Exit gracefully
+
+## Startup Process
+
+When you run `umcp serve`, it:
+
+1. **Loads configuration** from the specified config file
+   ```json
+   {"level":"info","event":"config.loaded","message":"Configuration loaded","data":{"path":"~/.config/umcp/umcp.jsonc"}}
+   ```
+
+2. **Connects to providers** defined in your config
+   ```json
+   {"level":"info","event":"provider.connected","message":"Provider connected","data":{"category":"web_search","provider":"brave"}}
+   ```
+
+3. **Discovers tools** from all upstream servers
+   ```json
+   {"level":"info","event":"tool.discovered","message":"Tool discovered","data":{"upstream":"search","canonical":"web_search.brave.search"}}
+   ```
+
+4. **Registers unified tools** with namespaced names
+   ```json
+   {"level":"info","event":"tool.registered","message":"Tool registered","data":{"name":"web_search.brave.search"}}
+   ```
+
+5. **Starts the server** on the configured transport
+
+## Error Handling
+
+### Invalid Transport
+
+```bash
+umcp serve --transport websocket
+```
+
+```
+Error: Invalid --transport value 'websocket'. Expected 'stdio' or 'http'.
+```
+
+### Invalid Port
+
+```bash
+umcp serve --transport http --port -1
+```
+
+```
+Error: Invalid value for --port: -1
+```
+
+```bash
+umcp serve --transport http --port abc
+```
+
+```
+Error: Invalid value for --port: abc
+```
+
+### Config File Issues
+
+If the config file has errors, UMCP will exit with validation details. See [validate command](/cli/validate) for more information.
+
+## Structured Logs
+
+All logs are emitted as JSON lines to stderr:
+
+```json
+{"level":"info","event":"server.started","message":"umcp started with stdio transport"}
+{"level":"info","event":"tool.called","message":"Tool invoked","data":{"tool":"web_search.brave.search"}}
+{"level":"info","event":"env.rotated","message":"Environment variable rotated","data":{"key":"API_KEY","index":2}}
+{"level":"error","event":"server.http_error","message":"HTTP transport request failed","data":{"message":"Request body too large"}}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Configure your MCP providers
+  </Card>
+  <Card title="Validate" icon="check" href="/cli/validate">
+    Validate your configuration
+  </Card>
+</CardGroup>

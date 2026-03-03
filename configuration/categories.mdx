@@ -1,0 +1,279 @@
+---
+title: Categories
+description: Organize providers into logical groups using categories
+---
+
+Categories are top-level organizational units in UMCP that group related providers together. They form the first segment of the tool namespace: `{category}.{provider}.{tool}`.
+
+## Purpose
+
+Categories help you organize providers by:
+
+- **Functionality:** Group providers by what they do (e.g., `web_search`, `project_mgmt`)
+- **Domain:** Organize by business domain (e.g., `customer_support`, `analytics`)
+- **Environment:** Separate by deployment stage (e.g., `production`, `staging`)
+
+<Note>
+Category names become part of the tool namespace. Choose meaningful names that clearly describe the group's purpose.
+</Note>
+
+## Configuration
+
+Define categories in the `categories` object at the root of your config file:
+
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/grittyninja/umcp/main/umcp.config.schema.json",
+  "categories": {
+    "web_search": {
+      "providers": [ /* ... */ ]
+    },
+    "project_mgmt": {
+      "providers": [ /* ... */ ]
+    }
+  }
+}
+```
+
+## Schema Reference
+
+<ParamField path="categories" type="object" required>
+  Map of category names to category configurations. Must contain at least one category.
+</ParamField>
+
+<ParamField path="categories.<name>" type="object" required>
+  A category containing one or more providers
+  
+  <Expandable title="properties">
+    <ParamField path="providers" type="array" required>
+      Array of provider configurations. Must contain at least one provider.
+      
+      See [Provider Configuration](/configuration/providers) for details.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Naming Rules
+
+Category names must follow these constraints:
+
+<ParamField path="name" type="string" required>
+  Category name used as the first namespace segment
+  
+  **Pattern:** `[a-zA-Z0-9_-]+`
+  
+  **Allowed characters:**
+  - Lowercase letters: `a-z`
+  - Uppercase letters: `A-Z`
+  - Numbers: `0-9`
+  - Underscore: `_`
+  - Hyphen: `-`
+  
+  **Not allowed:**
+  - Dots (`.`)
+  - Spaces
+  - Special characters
+  
+  **Examples:**
+  - ✅ `web_search`
+  - ✅ `project-mgmt`
+  - ✅ `api_v2`
+  - ❌ `web.search` (contains dot)
+  - ❌ `web search` (contains space)
+  - ❌ `api@v2` (contains special char)
+</ParamField>
+
+<Warning>
+Category names are used as namespace segments. Invalid names will cause validation errors on startup.
+</Warning>
+
+## Validation Rules
+
+UMCP enforces these validation rules:
+
+1. **At least one category:** The `categories` object must contain at least one category
+2. **Valid naming:** Category names must match the regex pattern `[a-zA-Z0-9_-]+`
+3. **At least one provider:** Each category must contain at least one provider
+4. **Unique provider names:** Provider names must be unique within each category (but can be reused across categories)
+
+## Namespace Structure
+
+Categories form the first segment of the three-part tool namespace:
+
+```
+{category}.{provider}.{tool}
+```
+
+### Example
+
+Given this configuration:
+
+```jsonc
+{
+  "categories": {
+    "web_search": {
+      "providers": [
+        {
+          "name": "brave",
+          "tools": [
+            { "upstream": "search", "alias": "search" }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+The tool is exposed as: `web_search.brave.search`
+
+## Multiple Providers per Category
+
+You can include multiple providers in a single category:
+
+```jsonc
+{
+  "categories": {
+    "web_search": {
+      "providers": [
+        {
+          "name": "brave",
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-brave-search"]
+        },
+        {
+          "name": "tavily",
+          "command": "npx",
+          "args": ["-y", "tavily-mcp"]
+        },
+        {
+          "name": "exa",
+          "command": "npx",
+          "args": ["-y", "exa-mcp"]
+        }
+      ]
+    }
+  }
+}
+```
+
+This exposes tools from all three search providers:
+- `web_search.brave.*`
+- `web_search.tavily.*`
+- `web_search.exa.*`
+
+## Multiple Categories
+
+Organize different types of functionality into separate categories:
+
+```jsonc
+{
+  "categories": {
+    "web_search": {
+      "providers": [
+        { "name": "brave", /* ... */ },
+        { "name": "tavily", /* ... */ }
+      ]
+    },
+    "project_mgmt": {
+      "providers": [
+        { "name": "linear", /* ... */ },
+        { "name": "jira", /* ... */ }
+      ]
+    },
+    "data_retrieval": {
+      "providers": [
+        { "name": "postgres", /* ... */ },
+        { "name": "redis", /* ... */ }
+      ]
+    }
+  }
+}
+```
+
+## Common Patterns
+
+### By Functionality
+
+Group providers that serve similar purposes:
+
+```jsonc
+{
+  "categories": {
+    "web_search": { /* ... */ },
+    "code_analysis": { /* ... */ },
+    "file_operations": { /* ... */ }
+  }
+}
+```
+
+### By Integration
+
+Organize by external service or platform:
+
+```jsonc
+{
+  "categories": {
+    "github": { /* ... */ },
+    "gitlab": { /* ... */ },
+    "bitbucket": { /* ... */ }
+  }
+}
+```
+
+### By Environment
+
+Separate configurations by deployment environment:
+
+```jsonc
+{
+  "categories": {
+    "prod_apis": { /* ... */ },
+    "staging_apis": { /* ... */ },
+    "dev_apis": { /* ... */ }
+  }
+}
+```
+
+<Tip>
+Use descriptive category names that make it easy to understand which tools belong where. Avoid generic names like `misc` or `other`.
+</Tip>
+
+## Error Messages
+
+Common validation errors related to categories:
+
+### Missing categories
+
+```
+Config validation failed: categories must include at least one category
+```
+
+**Solution:** Add at least one category to your configuration.
+
+### Invalid category name
+
+```
+Config validation failed: categories.web.search: category name must match [a-zA-Z0-9_-]+
+```
+
+**Solution:** Rename the category to use only allowed characters (no dots or spaces).
+
+### Empty providers array
+
+```
+Config validation failed: categories.web_search.providers must not be empty
+```
+
+**Solution:** Add at least one provider to the category.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configure Providers" icon="server" href="/configuration/providers">
+    Learn how to define provider connections
+  </Card>
+  <Card title="Map Tools" icon="wrench" href="/configuration/tools">
+    Control which tools are exposed
+  </Card>
+</CardGroup>

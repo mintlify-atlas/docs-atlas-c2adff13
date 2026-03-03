@@ -1,0 +1,261 @@
+---
+title: Introduction to UMCP
+description: Unified MCP aggregator that consolidates multiple MCP servers behind a single namespaced endpoint
+---
+
+<img
+  className="block dark:hidden"
+  src="/images/hero-light.svg"
+  alt="UMCP Hero Light"
+/>
+<img
+  className="hidden dark:block"
+  src="/images/hero-dark.svg"
+  alt="UMCP Hero Dark"
+/>
+
+## Welcome to UMCP
+
+UMCP (Unified MCP) solves **MCP configuration sprawl** by aggregating multiple upstream MCP servers behind one server entry. Instead of managing dozens of separate server configurations, UMCP gives you a single unified endpoint with intelligent namespacing and advanced features.
+
+<CardGroup cols={2}>
+  <Card
+    title="Installation"
+    icon="download"
+    href="/installation"
+  >
+    Get started with npm, npx, or GitHub installation
+  </Card>
+  <Card
+    title="Quick Start"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Launch UMCP in under 5 minutes with real examples
+  </Card>
+  <Card
+    title="Configuration"
+    icon="gear"
+    href="/configuration/overview"
+  >
+    Configure providers, namespaces, and tool mappings
+  </Card>
+  <Card
+    title="CLI Reference"
+    icon="terminal"
+    href="/cli/overview"
+  >
+    Complete CLI command reference and flags
+  </Card>
+</CardGroup>
+
+## Core Features
+
+<AccordionGroup>
+  <Accordion title="Aggregation with Namespaced Tools" icon="sitemap">
+    UMCP exposes all upstream tools with a predictable three-segment naming convention:
+    
+    ```
+    {category}.{provider}.{tool}
+    ```
+    
+    For example:
+    - `web_search.brave.search`
+    - `web_search.tavily.search`
+    - `project_mgmt.linear.add_task`
+    
+    This eliminates naming conflicts and makes it clear which provider each tool comes from.
+  </Accordion>
+
+  <Accordion title="Tool Aliasing" icon="tag">
+    Map upstream tool names to custom aliases in your config:
+    
+    ```jsonc
+    "tools": [
+      {
+        "upstream": "create_issue",
+        "alias": "add_task",
+        "enabled": true
+      }
+    ]
+    ```
+    
+    This is especially useful when upstream tools have incompatible characters like dots in their names.
+  </Accordion>
+
+  <Accordion title="Round-Robin Environment Key Rotation" icon="rotate">
+    Distribute API calls across multiple keys automatically:
+    
+    ```jsonc
+    "env": {
+      "BRAVE_API_KEY": [
+        "key_1_prod",
+        "key_2_prod",
+        "key_3_prod"
+      ]
+    }
+    ```
+    
+    UMCP rotates through keys on each invocation, perfect for rate limiting and load distribution. State is in-memory and resets on process restart.
+  </Accordion>
+
+  <Accordion title="Multi-Transport Support" icon="network-wired">
+    UMCP bridges different transport protocols:
+    
+    **Serve Transport** (how clients connect to UMCP):
+    - `stdio` - Standard input/output
+    - `http` - Streamable HTTP endpoint
+    
+    **Upstream Transport** (how UMCP connects to providers):
+    - `stdio` - Command-line MCP servers
+    - `sse` - Server-Sent Events
+    - `streamable-http` - HTTP-based MCP servers
+    
+    Mix and match as needed for your infrastructure.
+  </Accordion>
+</AccordionGroup>
+
+## Before and After
+
+### Before: Configuration Sprawl
+
+Managing multiple MCP servers separately in your host config:
+
+```json
+{
+  "mcpServers": {
+    "brave": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "env": { "BRAVE_API_KEY": "..." }
+    },
+    "tavily": {
+      "command": "npx",
+      "args": ["-y", "tavily-mcp"],
+      "env": { "TAVILY_API_KEY": "..." }
+    },
+    "linear": {
+      "url": "https://linear-mcp.example.com/mcp"
+    }
+  }
+}
+```
+
+### After: Single Unified Endpoint
+
+One UMCP entry that manages everything:
+
+```json
+{
+  "mcpServers": {
+    "umcp": {
+      "command": "npx",
+      "args": ["-y", "github:grittyninja/umcp", "serve", "--transport", "stdio"]
+    }
+  }
+}
+```
+
+All tools are now namespaced and accessible through the single UMCP endpoint:
+- `web_search.brave.search`
+- `web_search.tavily.search`
+- `project_mgmt.linear.add_task`
+
+<Note>
+  UMCP manages all provider connections, environment variables, and tool discovery internally via the `~/.config/umcp/umcp.jsonc` configuration file.
+</Note>
+
+## Naming Rules
+
+To ensure canonical names remain deterministic as exactly three segments, UMCP enforces strict naming rules:
+
+<ResponseField name="category" type="string" required>
+  Must match `[a-zA-Z0-9_-]+` (alphanumeric, underscores, hyphens only)
+</ResponseField>
+
+<ResponseField name="provider" type="string" required>
+  Must match `[a-zA-Z0-9_-]+` (alphanumeric, underscores, hyphens only)
+</ResponseField>
+
+<ResponseField name="tool alias" type="string">
+  Must match `[a-zA-Z0-9_-]+` (alphanumeric, underscores, hyphens only)
+</ResponseField>
+
+<Warning>
+  If an auto-discovered upstream tool name contains unsupported characters (like dots), UMCP requires an explicit `tools` mapping with a valid `alias`.
+</Warning>
+
+## Structured Logging
+
+UMCP emits structured JSON logs to `stderr` for observability:
+
+<CodeGroup>
+
+```json config.loaded
+{
+  "level": "info",
+  "event": "config.loaded",
+  "message": "Loaded umcp config",
+  "configPath": "/Users/you/.config/umcp/umcp.jsonc",
+  "categories": 2
+}
+```
+
+```json tool.called
+{
+  "level": "info",
+  "event": "tool.called",
+  "message": "Tool invoked",
+  "toolName": "web_search.brave.search",
+  "category": "web_search",
+  "provider": "brave"
+}
+```
+
+```json env.rotated
+{
+  "level": "info",
+  "event": "env.rotated",
+  "message": "Environment key rotated",
+  "key": "BRAVE_API_KEY",
+  "index": 1
+}
+```
+
+</CodeGroup>
+
+Available log events:
+- `config.loaded`, `config.created`, `config.invalid`
+- `provider.connected`, `provider.disconnected`
+- `tool.discovered`, `tool.registered`, `tool.called`
+- `env.rotated`
+- `dry_run.complete`
+
+## Requirements
+
+<CardGroup cols={2}>
+  <Card title="Node.js" icon="node-js">
+    Version 20 or higher required
+  </Card>
+  <Card title="Config Format" icon="file-code">
+    Only `.jsonc` files supported (JSON with comments)
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<Steps>
+  <Step title="Install UMCP">
+    Choose your preferred installation method: [npm, npx, or GitHub](/installation)
+  </Step>
+  <Step title="Configure Providers">
+    Set up your MCP providers in `~/.config/umcp/umcp.jsonc`
+  </Step>
+  <Step title="Start Using">
+    Run `umcp serve` and connect from your MCP host
+  </Step>
+</Steps>
+
+<Card title="Ready to get started?" icon="rocket" href="/installation">
+  Install UMCP now and consolidate your MCP servers
+</Card>

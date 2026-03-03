@@ -1,0 +1,268 @@
+---
+title: "Mixed Transport Configuration"
+description: "Combine stdio and HTTP transports in a single UMCP configuration"
+---
+
+This example demonstrates UMCP's transport bridging capability by combining multiple upstream servers using different transports (stdio and HTTP) behind a single UMCP entry.
+
+## Use Case
+
+You want to:
+- Use local stdio-based MCP servers (Brave, Tavily)
+- Connect to remote HTTP-based MCP servers (Linear)
+- Expose everything through a single unified interface
+- Let your host client use one consistent protocol
+
+## The Transport Problem
+
+Different MCP servers use different transports:
+- **stdio**: Process-based, launched with `command` and `args`
+- **HTTP**: Network-based, connected via `url`
+- **SSE**: Server-sent events (also HTTP-based)
+
+Host MCP clients must support each transport separately. UMCP solves this by:
+1. Accepting connections from hosts via stdio OR HTTP
+2. Connecting to upstreams via stdio, HTTP, or SSE
+3. Bridging between these transports transparently
+
+## Complete Mixed Transport Example
+
+### UMCP Configuration
+
+Here's a full configuration combining both transport types:
+
+```jsonc
+{
+  "$schema": "https://raw.githubusercontent.com/grittyninja/umcp/main/umcp.config.schema.json",
+
+  "categories": {
+    "web_search": {
+      "providers": [
+        {
+          "name": "brave",
+          "transport": "stdio",  // Local stdio process
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+          "env": {
+            "BRAVE_API_KEY": [
+              "BRAVE_API_KEY_1",
+              "BRAVE_API_KEY_2",
+              "BRAVE_API_KEY_3"
+            ]
+          },
+          "tools": [
+            {
+              "upstream": "search",
+              "alias": "search"
+            }
+          ]
+        },
+        {
+          "name": "tavily",
+          "transport": "stdio",  // Local stdio process
+          "command": "npx",
+          "args": ["-y", "tavily-mcp"],
+          "env": {
+            "TAVILY_API_KEY": "TAVILY_API_KEY"
+          }
+        }
+      ]
+    },
+    "project_mgmt": {
+      "providers": [
+        {
+          "name": "linear",
+          "transport": "streamable-http",  // Remote HTTP server
+          "url": "https://linear-mcp.example.com/mcp",
+          "tools": [
+            {
+              "upstream": "create_issue",
+              "alias": "add_task"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+## Host Client Configuration Options
+
+UMCP can serve via stdio OR HTTP. Choose based on your host client's needs.
+
+### Option 1: Serve via stdio (Recommended)
+
+Most MCP clients expect stdio:
+
+```json
+{
+  "mcpServers": {
+    "umcp": {
+      "command": "npx",
+      "args": ["-y", "github:grittyninja/umcp", "serve", "--transport", "stdio"]
+    }
+  }
+}
+```
+
+### Option 2: Serve via HTTP
+
+If your host client supports HTTP connections:
+
+```json
+{
+  "mcpServers": {
+    "umcp": {
+      "url": "http://127.0.0.1:8787/mcp"
+    }
+  }
+}
+```
+
+Start UMCP separately:
+
+```bash
+umcp serve --transport http --host 127.0.0.1 --port 8787 --path /mcp
+```
+
+## Transport Flow Diagram
+
+```
+Host MCP Client
+    ↓ (stdio or HTTP)
+   UMCP Server
+    ↓ ↓ ↓
+    ↓ ↓ ↓ (bridges between transports)
+    ↓ ↓ ↓
+   stdio  stdio  HTTP
+    ↓     ↓      ↓
+  Brave  Tavily  Linear
+```
+
+UMCP handles all transport translation automatically.
+
+## Resulting Tools
+
+Regardless of upstream transports, your host sees a unified set of tools:
+
+- `web_search.brave.search` (from stdio server)
+- `web_search.tavily.search` (from stdio server)
+- `project_mgmt.linear.add_task` (from HTTP server)
+
+All accessible through the single UMCP connection.
+
+## Transport Configuration Details
+
+### stdio Transport
+
+Required fields:
+```jsonc
+{
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "package-name"],
+  "env": {  // optional
+    "ENV_VAR": "value"
+  }
+}
+```
+
+UMCP will:
+- Launch the process with the specified command
+- Manage the process lifecycle
+- Communicate via stdin/stdout
+- Handle process failures and restarts
+
+### streamable-http Transport
+
+Required fields:
+```jsonc
+{
+  "transport": "streamable-http",
+  "url": "https://example.com/mcp"
+}
+```
+
+UMCP will:
+- Connect to the HTTP endpoint
+- Use MCP's HTTP streaming protocol
+- Handle connection retries
+- Maintain persistent connections
+
+### sse Transport
+
+For Server-Sent Events:
+```jsonc
+{
+  "transport": "sse",
+  "url": "https://example.com/events"
+}
+```
+
+## Benefits of Mixed Transports
+
+✓ **Flexibility**: Use local and remote servers together
+✓ **Simplicity**: Host only needs to support one transport
+✓ **Scalability**: Run heavy services remotely, light ones locally
+✓ **Security**: Keep sensitive operations on localhost via stdio
+✓ **Performance**: Balance between local speed and shared resources
+
+## Common Patterns
+
+### Pattern 1: Local Processing + Remote Data
+
+- Use stdio for compute-intensive local tools
+- Use HTTP for centralized data services
+- Example: Local file analysis + remote database queries
+
+### Pattern 2: Development vs Production
+
+- Use stdio in development (easy debugging)
+- Use HTTP in production (centralized deployment)
+- Same UMCP config, different serve options
+
+### Pattern 3: Team Shared Resources
+
+- Use HTTP for expensive/licensed APIs (Linear, GitHub)
+- Use stdio for personal tools (file access, local search)
+- Team members share the HTTP servers
+
+## Testing
+
+Validate the configuration:
+
+```bash
+umcp validate
+```
+
+Dry-run to see all discovered tools:
+
+```bash
+umcp dry-run
+```
+
+You should see tools from all providers, regardless of their transport.
+
+## Troubleshooting
+
+### stdio Issues
+
+- Check `command` is in PATH
+- Verify `env` variables are set correctly
+- Look for process errors in structured logs
+
+### HTTP Issues
+
+- Verify URL is accessible
+- Check network connectivity
+- Ensure the HTTP endpoint supports MCP protocol
+- Review structured logs for connection errors
+
+## Summary
+
+UMCP's transport bridging lets you:
+- Mix stdio, HTTP, and SSE upstreams freely
+- Serve via stdio or HTTP to your host
+- Abstract transport complexity from your workflows
+- Scale and reorganize servers without changing host config
