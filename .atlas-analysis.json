@@ -1,0 +1,75 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "UMCP",
+  "projectDescription": "Unified MCP server that aggregates multiple upstream MCP providers into one namespaced endpoint with round-robin env key rotation.",
+  "theme": "aspen",
+  "primaryColor": "#2563eb",
+  "lightColor": "#60a5fa",
+  "darkColor": "#1e40af",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get Started",
+        "pages": [
+          "introduction",
+          "installation",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Configuration",
+        "pages": [
+          "configuration/overview",
+          "configuration/categories",
+          "configuration/providers",
+          "configuration/tools",
+          "configuration/environment-variables"
+        ]
+      },
+      {
+        "group": "CLI Reference",
+        "pages": [
+          "cli/overview",
+          "cli/serve",
+          "cli/validate",
+          "cli/dry-run"
+        ]
+      },
+      {
+        "group": "Core Concepts",
+        "pages": [
+          "concepts/namespacing",
+          "concepts/transport-bridging",
+          "concepts/round-robin-rotation"
+        ]
+      },
+      {
+        "group": "Examples",
+        "pages": [
+          "examples/web-search",
+          "examples/project-management",
+          "examples/mixed-transports"
+        ]
+      },
+      {
+        "group": "Troubleshooting",
+        "pages": [
+          "troubleshooting/common-issues",
+          "troubleshooting/logs"
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Aggregation with namespaced tools: {category}.{provider}.{tool}",
+    "Tool aliasing via config with upstream and optional alias",
+    "Round-robin env rotation for array values per invocation",
+    "Transport bridging between stdio, SSE, and Streamable HTTP",
+    "JSONC configuration with auto-creation and schema validation"
+  ],
+  "publicApiSurface": [
+    "umcp serve [--transport stdio|http] [--host 127.0.0.1] [--port 8787] [--path /mcp] [--config /path/to/umcp.jsonc]",
+    "umcp validate [--config /path/to/umcp.jsonc]",
+    "umcp dry-run [--config /path/to/umcp.jsonc]"
+  ]
+}
